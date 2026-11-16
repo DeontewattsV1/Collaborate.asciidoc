@@ -51,9 +51,10 @@ func mcpHandler(in rpcInput) (any, *rpcError) {
 			ProtocolVersion string `json:"protocolVersion"`
 		}
 		_ = json.Unmarshal(in.Params, &p)
-		v := p.ProtocolVersion
-		if v == "" {
-			v = "2024-11-05"
+		// Negotiate a protocol version this small adapter actually implements.
+		v := "2024-11-05"
+		if p.ProtocolVersion == "2024-11-05" {
+			v = p.ProtocolVersion
 		}
 		return map[string]any{"protocolVersion": v, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]string{"name": "collab", "version": "0.1.0"}}, nil
 	case "ping":

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash"
 	"io"
 	"net"
 	"net/http"
@@ -17,10 +18,22 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/DeontewattsV1/Collaborate.asciidoc/internal/collab"
 )
+
+type synchronizedHash struct {
+	mu   sync.Mutex
+	hash hash.Hash
+}
+
+func (s *synchronizedHash) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hash.Write(p)
+}
 
 func usage() {
 	fmt.Fprint(os.Stderr, `collab v0.1 — multi-agent terminal coordination with broker-signed receipts
@@ -240,8 +253,9 @@ func run(args []string) error {
 		c := exec.Command(argv[0], argv[1:]...)
 		c.Dir = *cwd
 		h := sha256.New()
-		c.Stdout = io.MultiWriter(os.Stdout, h)
-		c.Stderr = io.MultiWriter(os.Stderr, h)
+		locked := &synchronizedHash{hash: h}
+		c.Stdout = io.MultiWriter(os.Stdout, locked)
+		c.Stderr = io.MultiWriter(os.Stderr, locked)
 		err := c.Run()
 		exit := 0
 		if err != nil {

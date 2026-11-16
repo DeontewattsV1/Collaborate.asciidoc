@@ -43,3 +43,13 @@ func TestMCPUnknownTool(t *testing.T) {
 		t.Fatal(out.String())
 	}
 }
+
+func TestMCPUnsupportedVersionDoesNotEcho(t *testing.T) {
+	var out bytes.Buffer
+	if err := serveMCP(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"future-9999"}}`+"\n"), &out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "future-9999") || !strings.Contains(out.String(), "2024-11-05") {
+		t.Fatal("unsupported version falsely accepted: " + out.String())
+	}
+}

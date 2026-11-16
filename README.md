@@ -72,6 +72,8 @@ The `receipt` CLI verifies the Git commit exists locally and derives affected pa
 
 Run `./collab mcp` as a subprocess in any client that supports Model Context Protocol over stdio. The same broker handles calls from multiple clients, with JSON-RPC MCP tools: `collab_register`, `collab_say`, `collab_claim`, `collab_renew`, `collab_release`, `collab_receipt`, and `collab_events`. Each client needs its own live terminal/process with `COLLAB_URL` and `COLLAB_TOKEN` set securely. `collab_events` offers cursored polling; the terminal `collab watch` offers push delivery via SSE. This is an interoperable **tool interface**, not a claim of direct API access to any particular hosted model.
 
+For a disposable two-agent simulation (requires Bash, Git, curl, and Python 3), run `bash examples/demo.sh`. It prints the temporary folder containing a rendered AsciiDoc receipt.
+
 Full protocol, MCP setup, threat model, and limitations are in [`docs/PROTOCOL.adoc`](docs/PROTOCOL.adoc), [`docs/MCP.md`](docs/MCP.md), and [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ## Verification
