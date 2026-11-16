@@ -4,16 +4,18 @@ Multi-agent dispatch, parallel coordination, shared context, and verification.
 
 ## Current prototype
 
-This repository includes a local-first Go coordination broker. It authenticates Ed25519-signed agent requests, maintains expiring hierarchical path leases, and stores a signed, SHA-256 hash-chained event ledger in SQLite. It can create per-agent Git worktrees, accept edits through a lease-checked broker write endpoint, independently derive commit receipt metadata from the server-side Git checkout, run operator-configured gates against the merge candidate, and queue changes for independent review before merging them into a session trunk.
+**Transition note:** two independent pilots currently coexist. `collaborate` (`cmd/collaborate`) is the Ed25519-authenticated broker scaffold described below. `collab` (`cmd/collab`) is the newer local pilot described by [`docs/SECURITY.md`](docs/SECURITY.md); it has a separate database schema, shared bearer-token client model, and MCP stdio adapter. Their brokers, ledgers, and MCP tools are not interchangeable. Keep their state directories, ports, and host configurations separate. CI tests both; the project has not yet consolidated them into one canonical implementation.
 
-The CLI includes an MCP 2025-06-18 stdio bridge exposing only six signed coordination tools for one configured agent: claim, renew, release, say, inbox, and receipt. The two-agent protocol test uses separate Ed25519 identities and exercises both bridge instances against the same broker. It is not evidence that an external model host or a live model provider has been connected. The optional OpenAI-compatible adapter makes a single completion but is not an MCP model host or an autonomous tool-calling loop.
+The `collaborate` scaffold authenticates Ed25519-signed agent requests, maintains expiring hierarchical path leases, and stores a signed, SHA-256 hash-chained event ledger in SQLite. It can create per-agent Git worktrees, accept edits through a lease-checked broker write endpoint, independently derive commit receipt metadata from the server-side Git checkout, run operator-configured gates against the merge candidate, and queue changes for independent review before merging them into a session trunk. The separate `collab` pilot does not inherit these properties; see its security notes.
+
+The `collaborate` CLI includes an MCP 2025-06-18 stdio bridge exposing six signed coordination tools for one configured agent: claim, renew, release, say, inbox, and receipt. Its two-agent protocol test uses separate Ed25519 identities against one broker. The separate `collab mcp` bridge follows the pilot's shared-token protocol. Neither bridge has been connected to an external model host in a live run. The optional OpenAI-compatible adapter makes one completion; it is not an MCP model host or an autonomous tool-calling loop.
 
 The existing [`Event schema`](Event%20schema), [`collab-agent`](collab-agent), and [`AsciiDoc`](AsciiDoc) files describe the protocol and target experience; the latter two include aspirational features that are not all implemented by this CLI. A sample deterministic report is available at [`examples/collaborate.AsciiDoc`](examples/collaborate.AsciiDoc).
 
 ## Requirements and verification
 
-- Go 1.22+ and Git.
-- The SQLite driver is a Go module dependency downloaded at build time.
+- Go 1.22+, Git, a C compiler, and `CGO_ENABLED=1` for the `collab` pilot.
+- Install SQLite development headers (`libsqlite3-dev` on Debian/Ubuntu) to build `cmd/collab`; `cmd/collaborate` uses its Go-module SQLite driver.
 
 ```sh
 go mod tidy
@@ -108,9 +110,9 @@ Set `COLLAB_AGENT` to choose the signing identity; command-level `--agent` overr
 
 ## CI and the GitHub merge boundary
 
-`.github/workflows/ci.yml` runs on GitHub-hosted runners with only `contents: read`. The stable required-check context is `go-verify`; it runs formatting, uncached unit tests, race tests, `go vet`, and a build. This is remote CI evidence, not proof that the code is correct or that tests themselves are adequate.
+`.github/workflows/ci.yml` runs on GitHub-hosted runners with only `contents: read`; checkout credentials are not persisted. The stable required-check context is `go-verify`; it runs formatting, uncached tests, race tests, `go vet`, and builds both CLIs with CGO/system SQLite enabled. This is remote CI evidence, not proof that the code is correct or that tests themselves are adequate.
 
-To make that check a merge gate, an administrator must activate a repository ruleset targeting the default branch. The proposed payload is [`main-required-ci.json`](.github/rulesets/main-required-ci.json): it requires pull requests and the `go-verify` status check from the GitHub Actions app, requires the branch to be current with the base, and grants no bypass actors. Committing this JSON does not activate it; repository protection changes are a separate administrative action.
+To make that check a merge gate, an administrator must activate a repository ruleset targeting the default branch. The proposed payload is [`main-required-ci.json`](.github/rulesets/main-required-ci.json): it requires pull requests and the `go-verify` status check from the GitHub Actions app, requires the branch to be current with the base, and grants no bypass actors. It does not require human approvals. Committing this JSON does not activate it; see [`docs/GITHUB-CI.md`](docs/GITHUB-CI.md) for the rationale and official references.
 
 The MCP bridge binds one signing identity to each process, but separate MCP configurations alone do not create an OS security boundary. If agents run under the same user, that user may be able to read both private keys and access both worktrees. Do not call the example host configuration isolated. For isolation, run each model host under a separate UID or container with only its own worktree and credentials mounted, and test cross-worktree and broker-state writes as denied. This repository does not yet provide or verify that runtime isolation launcher. It also does not invoke or attest two actual model providers; provider and host choices are still required for the live pilot.
 

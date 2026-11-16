@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DeontewattsV1/Collaborate.asciidoc/internal/sqlite"
+	"collaborate/internal/sqlite"
 )
 
 func testStore(t *testing.T) (*Store, string) {
