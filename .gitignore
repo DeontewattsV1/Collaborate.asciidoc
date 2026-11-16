@@ -1,0 +1,10 @@
+# Local runtime state and credentials
+.collab/
+collab
+collaborate.adoc
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.key
+*.pub
+*.test
