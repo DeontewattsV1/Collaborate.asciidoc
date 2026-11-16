@@ -6,7 +6,7 @@ Multi-agent dispatch, parallel coordination, shared context, and verification.
 
 This repository includes a local-first Go coordination broker. It authenticates Ed25519-signed agent requests, maintains expiring hierarchical path leases, and stores a signed, SHA-256 hash-chained event ledger in SQLite. It can create per-agent Git worktrees, accept edits through a lease-checked broker write endpoint, independently derive commit receipt metadata from the server-side Git checkout, run operator-configured gates against the merge candidate, and queue changes for independent review before merging them into a session trunk.
 
-The CLI can invoke an OpenAI-compatible chat provider through a separate adapter package and record the response through the signed broker protocol. It does not launch model CLIs, provide model tool-calling/file-edit plans, or include provider-specific Anthropic/local-model plugins. The deterministic `echo` adapter remains available for offline protocol demos.
+The CLI includes an MCP 2025-06-18 stdio bridge exposing only six signed coordination tools for one configured agent: claim, renew, release, say, inbox, and receipt. The two-agent protocol test uses separate Ed25519 identities and exercises both bridge instances against the same broker. It is not evidence that an external model host or a live model provider has been connected. The optional OpenAI-compatible adapter makes a single completion but is not an MCP model host or an autonomous tool-calling loop.
 
 The existing [`Event schema`](Event%20schema), [`collab-agent`](collab-agent), and [`AsciiDoc`](AsciiDoc) files describe the protocol and target experience; the latter two include aspirational features that are not all implemented by this CLI. A sample deterministic report is available at [`examples/collaborate.AsciiDoc`](examples/collaborate.AsciiDoc).
 
@@ -101,9 +101,18 @@ Gate configuration is not read from a submitted branch. Commands are passed as a
 - `rotate-key`, `revoke-key --version N` — rotate the current Ed25519 key and revoke an older key version. Old private keys are archived locally during rotation; protect or remove those archives as your key-retention policy requires.
 - `status`, `verify`, `render` — signed, session-scoped reads. Set `COLLAB_AGENT` or use `--agent`; `verify` validates the full ledger chain.
 - `export --out FILE [--repo DIR] [--admin-token-file FILE]` — append/validate a full-ledger JSONL snapshot; requires the operator token when one is configured.
-- `adapter list`, `adapter run --name echo|openai-compatible --prompt TEXT` — run the deterministic fixture or an OpenAI-compatible chat plugin. Provider configuration uses `COLLAB_MODEL_BASE_URL` (default `https://api.openai.com/v1`), `COLLAB_MODEL`, and `COLLAB_MODEL_API_KEY` (or `OPENAI_API_KEY`). The provider response is recorded via the signed broker `say` capability; model-driven file tools are not implemented.
+- `mcp --repo DIR --agent ID` — run the stdio MCP bridge for exactly one agent. See [`examples/mcp-hosts.template.json`](examples/mcp-hosts.template.json). It intentionally exposes no shell or arbitrary filesystem operation.
+- `adapter list`, `adapter run --name echo|openai-compatible --prompt TEXT` — run the deterministic fixture or a single OpenAI-compatible completion. Provider configuration uses `COLLAB_MODEL_BASE_URL`, `COLLAB_MODEL`, and `COLLAB_MODEL_API_KEY` (or `OPENAI_API_KEY`).
 
 Set `COLLAB_AGENT` to choose the signing identity; command-level `--agent` overrides it. Project config and private keys are under `.collab/`, which should remain private and untracked.
+
+## CI and the GitHub merge boundary
+
+`.github/workflows/ci.yml` runs on GitHub-hosted runners with only `contents: read`. The stable required-check context is `go-verify`; it runs formatting, uncached unit tests, race tests, `go vet`, and a build. This is remote CI evidence, not proof that the code is correct or that tests themselves are adequate.
+
+To make that check a merge gate, an administrator must activate a repository ruleset targeting the default branch. The proposed payload is [`main-required-ci.json`](.github/rulesets/main-required-ci.json): it requires pull requests and the `go-verify` status check from the GitHub Actions app, requires the branch to be current with the base, and grants no bypass actors. Committing this JSON does not activate it; repository protection changes are a separate administrative action.
+
+The MCP bridge binds one signing identity to each process, but separate MCP configurations alone do not create an OS security boundary. If agents run under the same user, that user may be able to read both private keys and access both worktrees. Do not call the example host configuration isolated. For isolation, run each model host under a separate UID or container with only its own worktree and credentials mounted, and test cross-worktree and broker-state writes as denied. This repository does not yet provide or verify that runtime isolation launcher. It also does not invoke or attest two actual model providers; provider and host choices are still required for the live pilot.
 
 ## Remote deployment, backup, and trust boundaries
 
