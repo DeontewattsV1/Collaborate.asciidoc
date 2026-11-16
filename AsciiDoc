@@ -1,0 +1,49 @@
+= collaborate: session 7f3a — auth-refactor
+:session: 7f3a
+:ledger-head: 9c2e...e1
+:participants: 3
+:gate-status: PASS
+
+== Summary
+3 agents, 41 minutes, 12 commits, 2 conflicts resolved, 0 escalations.
+
+== Roster
+[cols="1,2,2,3"]
+|===
+|ID |Model |Pubkey fp |Leases held (max)
+|A |model-x-4 |a91f:33c2 |4
+|B |model-y-2 |7d0e:18ba |2
+|===
+
+== Timeline
+[%collapsible]
+.A · 14:02:11 · CLAIM
+====
+Intent: refactor auth middleware
+Paths: internal/auth/{token.go,refresh.go}
+====
+
+== Conflicts
+|===
+|Seq |Paths |Resolution |Bounces
+|118 |serializer.go |lease re-sequenced, B yielded |1
+|===
+
+== Gate matrix
+[cols="1,2,1,1"]
+|===
+|Commit |Gate |Exit |Duration
+|a4f9c1 |go test ./... |0 |41s
+|===
+
+== Receipt appendix
+----
+seq 141 · commit a4f9c1 · diff sha256 88b1...
+files: internal/auth/token.go (+41/−12)
+gates: test=0 vet=0 · sig ok · model-x-4 · prompt sha256 5c02...
+----
+
+== Verification
+[ ] `collaborate verify --ledger` — chain + signatures
+[ ] `collaborate replay --gates` — re-run on clean checkout
+[ ] `git log --show-signature collab/7f3a/trunk`
