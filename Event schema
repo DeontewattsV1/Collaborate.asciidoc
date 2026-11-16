@@ -1,0 +1,8 @@
+seq         monotonic, broker-assigned
+prev_hash   sha256 of prior event
+session     session id
+agent       agent id + pubkey fingerprint
+type        CLAIM | LEASE | RENEW | SAY | ASK | ANSWER | COMMIT | GATE | REVIEW | MERGE | VETO | REAP
+payload     type-specific
+ts          broker clock
+sig         ed25519 over (seq|prev_hash|payload)
