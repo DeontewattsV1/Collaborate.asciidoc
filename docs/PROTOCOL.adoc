@@ -1,0 +1,66 @@
+= Collaborate.asciidoc Protocol v0.1
+:toc:
+:sectnums:
+
+== Scope
+
+The broker coordinates simultaneous terminal clients. The *only* authoritative event sequence is broker-assigned. Concurrent work should happen in separate Git worktrees; leases are advisory with respect to direct file operations and enforced only at receipt submission and lease allocation API boundaries.
+
+== Components
+
+* Work plane: terminal clients, independently staged Git worktrees, protected remote integration branch.
+* Coordination plane: singleton loopback broker (HTTP JSON and SSE), serialized SQLite transactions for leases and event sequence.
+* Evidence plane: append-only application-level event sequence, SHA-256 chain, Ed25519 broker signatures, externally pinned public key/head, deterministic AsciiDoc renderer.
+* Tool interface: MCP over stdio; one process per model host. Inter-agent messages go to the broker, not through the model's context or a Markdown handoff.
+
+== Endpoints
+
+[cols="2,1,3",options="header"]
+|===
+|Endpoint |Method |Effect
+|`/v1/register` |POST |Register unique agent/model labels
+|`/v1/message` |POST |Publish message with actor, recipient, body
+|`/v1/lease` |POST |Atomically grant nonoverlapping path lease
+|`/v1/renew` |POST |Extend owned, unexpired lease
+|`/v1/release` |POST |Release owned lease
+|`/v1/receipt` |POST |Check covered paths and append Git commit claim
+|`/v1/gate` |POST |Append agent-reported local command outcome
+|`/v1/events?after=N` |GET |Cursored event history
+|`/v1/watch?after=N` |GET |SSE stream, with reconnect via `after`
+|===
+
+All `/v1` routes require the shared bearer token unless the server is deliberately started in `-unsafe-local-no-auth` mode. Only the loopback listener is supported by the binary.
+
+== Event structure
+
+[source,json]
+----
+{
+  "seq": 12,
+  "timestamp": "2026-11-16T12:00:00Z",
+  "actor": "agent-alpha",
+  "type": "MESSAGE",
+  "payload": {"agent":"agent-alpha","to":"agent-beta","body":"Ready for review"},
+  "prev_hash": "<previous SHA-256>",
+  "hash": "<current SHA-256>",
+  "signature": "<broker Ed25519 signature over hex hash>"
+}
+----
+
+`hash = SHA256("collab-event-v1\n" + seq + "\n" + timestamp + "\n" + actor + "\n" + type + "\n" + compact_payload_json + "\n" + prev_hash + "\n")`. The broker signs ASCII-encoded lowercase hexadecimal `hash`. Sequence begins at 1 with an empty `prev_hash`. An external verifier must pin the public key and expected head to make truncation and key replacement detectably invalid. Without an external head, deletion of a valid suffix cannot be detected by chain verification alone.
+
+== Lease overlap
+
+Repository-relative, slash-separated paths must be normalized and must not contain traversal, colon, NUL, or Windows-style separators. Two paths conflict when equal or one is a complete directory prefix of the other. `src/auth` overlaps `src/auth/token.go` but not `src/auth2`. A lease expires when its TTL passes; expiry is enforced at lookup. A lease cannot be renewed after it expires. The current implementation does not resolve symlinks or lock filesystem syscalls and therefore MUST NOT be treated as a sandbox.
+
+== Receipt acceptance
+
+A receipt contains a syntactically valid Git object hash, summary, and path set. For each path, the server requires an active unexpired lease owned by the submitter. The CLI additionally uses local Git to prove the commit exists and derive changed paths. Server-side validation of actual remote commits, CI results, and identity proof is not implemented in v0.1.
+
+== Falsification experiments
+
+* Concurrency: simultaneously claim the same path with two registered agents. Exactly one may win.
+* Isolation boundary: deliberately write a file without a lease. The filesystem may change, demonstrating the absence of mandatory write enforcement. The subsequent receipt must be rejected.
+* Evidence: modify one event row. Signature/head verification must fail.
+* Suffix truncation: delete the most recent event, then verify against the previous externally pinned head. Verification must fail.
+* Missing evidence: announce a passing gate without executing it. The broker can sign the report but cannot tell it is false. CI attestation must be the next gate.
