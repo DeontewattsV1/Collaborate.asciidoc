@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DeontewattsV1/Collaborate.asciidoc/internal/sqlite"
+	"collaborate/internal/sqlite"
 )
 
 var agentPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$`)

@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "collaborate-agent-a": {
+      "command": "/absolute/path/to/collaborate",
+      "args": [
+        "mcp",
+        "--repo",
+        "/absolute/path/to/project-root",
+        "--agent",
+        "A"
+      ]
+    },
+    "collaborate-agent-b": {
+      "command": "/absolute/path/to/collaborate",
+      "args": [
+        "mcp",
+        "--repo",
+        "/absolute/path/to/project-root",
+        "--agent",
+        "B"
+      ]
+    }
+  }
+}

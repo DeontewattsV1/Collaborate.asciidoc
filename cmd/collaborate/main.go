@@ -20,6 +20,7 @@ import (
 	"collaborate/internal/adapter"
 	"collaborate/internal/broker"
 	"collaborate/internal/client"
+	"collaborate/internal/mcpserver"
 	"collaborate/internal/repoops"
 	"collaborate/internal/store"
 )
@@ -48,7 +49,9 @@ Commands:
   submit | queue | review --queue-id N --verdict approve|request_changes | integrate --queue-id N
   rotate-key | revoke-key --version N
 	status | verify | render | export --out FILE [--admin-token-file FILE]
-	adapter list | adapter run --name echo|openai-compatible --prompt TEXT
+		adapter list | adapter run --name echo|openai-compatible --prompt TEXT
+		mcp --repo DIR --agent ID          stdio MCP coordination server
+		mcp [--repo DIR] --agent ID        stdio MCP server for one agent identity
 
 Set COLLAB_AGENT to select the registered signing identity. Remote serving requires mTLS.
 openai-compatible reads COLLAB_MODEL_BASE_URL, COLLAB_MODEL, and COLLAB_MODEL_API_KEY (or OPENAI_API_KEY) from the environment.
@@ -612,6 +615,14 @@ func main() {
 		result, e := a.Run(context.Background(), adapter.Request{Prompt: *prompt}, adapter.NewSignedBroker(cli))
 		fatal(e)
 		fmt.Println(result.Text)
+	case "mcp":
+		fs := flag.NewFlagSet("mcp", flag.ExitOnError)
+		repo := fs.String("repo", "", "project directory containing .collab configuration")
+		agent := mustAgentFlag(fs)
+		_ = fs.Parse(args)
+		_, _, cli, err := openProject(*repo, *agent)
+		fatal(err)
+		fatal((&mcpserver.Server{Broker: cli}).Serve(os.Stdin, os.Stdout))
 	default:
 		usage()
 		os.Exit(2)

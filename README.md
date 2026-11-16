@@ -4,22 +4,26 @@ Multi-agent dispatch, parallel coordination, shared context, and verification.
 
 ## Current prototype
 
-This repository includes a local-first Go coordination broker. It authenticates Ed25519-signed agent requests, maintains expiring hierarchical path leases, and stores a signed, SHA-256 hash-chained event ledger in SQLite. It can create per-agent Git worktrees, accept edits through a lease-checked broker write endpoint, independently derive commit receipt metadata from the server-side Git checkout, run operator-configured gates against the merge candidate, and queue changes for independent review before merging them into a session trunk.
+**Transition note:** two independent pilots currently coexist. `collaborate` (`cmd/collaborate`) is the Ed25519-authenticated broker scaffold described below. `collab` (`cmd/collab`) is the newer local pilot described by [`docs/SECURITY.md`](docs/SECURITY.md); it has a separate database schema, shared bearer-token client model, and MCP stdio adapter. Their brokers, ledgers, and MCP tools are not interchangeable. Keep their state directories, ports, and host configurations separate. CI tests both; the project has not yet consolidated them into one canonical implementation.
 
-The CLI can invoke an OpenAI-compatible chat provider through a separate adapter package and record the response through the signed broker protocol. It does not launch model CLIs, provide model tool-calling/file-edit plans, or include provider-specific Anthropic/local-model plugins. The deterministic `echo` adapter remains available for offline protocol demos.
+The `collaborate` scaffold authenticates Ed25519-signed agent requests, maintains expiring hierarchical path leases, and stores a signed, SHA-256 hash-chained event ledger in SQLite. It can create per-agent Git worktrees, accept edits through a lease-checked broker write endpoint, independently derive commit receipt metadata from the server-side Git checkout, run operator-configured gates against the merge candidate, and queue changes for independent review before merging them into a session trunk. The separate `collab` pilot does not inherit these properties; see its security notes.
+
+The `collaborate` CLI includes an MCP 2025-06-18 stdio bridge exposing six signed coordination tools for one configured agent: claim, renew, release, say, inbox, and receipt. Its two-agent protocol test uses separate Ed25519 identities against one broker. The separate `collab mcp` bridge follows the pilot's shared-token protocol. Neither bridge has been connected to an external model host in a live run. The optional OpenAI-compatible adapter makes one completion; it is not an MCP model host or an autonomous tool-calling loop.
 
 The existing [`Event schema`](Event%20schema), [`collab-agent`](collab-agent), and [`AsciiDoc`](AsciiDoc) files describe the protocol and target experience; the latter two include aspirational features that are not all implemented by this CLI. A sample deterministic report is available at [`examples/collaborate.AsciiDoc`](examples/collaborate.AsciiDoc).
 
 ## Requirements and verification
 
-- Go 1.22+ and Git.
-- The SQLite driver is a Go module dependency downloaded at build time.
+- Go 1.22+, Git, a C compiler, and `CGO_ENABLED=1` for the `collab` pilot.
+- Install SQLite development headers (`libsqlite3-dev` on Debian/Ubuntu) to build `cmd/collab`; `cmd/collaborate` uses its Go-module SQLite driver.
+- Python 3.10+ for the optional live MCP model-client harness and its unit tests.
 
 ```sh
 go mod tidy
 go test ./...
 go test -race ./...
 go vet ./...
+python3 -m unittest discover -s scripts -p 'test_*.py'
 go build -o ./collaborate ./cmd/collaborate
 ```
 
@@ -101,9 +105,18 @@ Gate configuration is not read from a submitted branch. Commands are passed as a
 - `rotate-key`, `revoke-key --version N` — rotate the current Ed25519 key and revoke an older key version. Old private keys are archived locally during rotation; protect or remove those archives as your key-retention policy requires.
 - `status`, `verify`, `render` — signed, session-scoped reads. Set `COLLAB_AGENT` or use `--agent`; `verify` validates the full ledger chain.
 - `export --out FILE [--repo DIR] [--admin-token-file FILE]` — append/validate a full-ledger JSONL snapshot; requires the operator token when one is configured.
-- `adapter list`, `adapter run --name echo|openai-compatible --prompt TEXT` — run the deterministic fixture or an OpenAI-compatible chat plugin. Provider configuration uses `COLLAB_MODEL_BASE_URL` (default `https://api.openai.com/v1`), `COLLAB_MODEL`, and `COLLAB_MODEL_API_KEY` (or `OPENAI_API_KEY`). The provider response is recorded via the signed broker `say` capability; model-driven file tools are not implemented.
+- `mcp --repo DIR --agent ID` — run the stdio MCP bridge for exactly one agent. See [`examples/mcp-hosts.template.json`](examples/mcp-hosts.template.json). It intentionally exposes no shell or arbitrary filesystem operation.
+- `adapter list`, `adapter run --name echo|openai-compatible --prompt TEXT` — run the deterministic fixture or a single OpenAI-compatible completion. Provider configuration uses `COLLAB_MODEL_BASE_URL`, `COLLAB_MODEL`, and `COLLAB_MODEL_API_KEY` (or `OPENAI_API_KEY`).
 
 Set `COLLAB_AGENT` to choose the signing identity; command-level `--agent` overrides it. Project config and private keys are under `.collab/`, which should remain private and untracked.
+
+## CI and the GitHub merge boundary
+
+`.github/workflows/ci.yml` runs on GitHub-hosted runners with only `contents: read`; checkout credentials are not persisted. The stable required-check context is `go-verify`; it runs formatting, uncached tests, race tests, `go vet`, and builds both CLIs with CGO/system SQLite enabled. This is remote CI evidence, not proof that the code is correct or that tests themselves are adequate.
+
+The repository ruleset `main-require-independent-ci` (ID `27378635`) is active on the default branch. It requires pull requests and the `go-verify` status check from the GitHub Actions app, requires the branch to be current with the base, and grants no bypass actors. The submitted payload sets required approving reviews to zero; GitHub’s stored rule also enables an extra approval for unattributed changes. The checked-in [`main-required-ci.json`](.github/rulesets/main-required-ci.json) is the declarative payload; changes to GitHub’s live setting are separate. See [`docs/GITHUB-CI.md`](docs/GITHUB-CI.md) for rationale and official references.
+
+The live MCP pilot connected OpenAI GPT-6 Luna and Google Gemini 3.8 Flash through separate MCP stdio processes, and tested each under a separate Unix UID. Own-workspace access succeeded; sibling worktree/key and broker-state access were denied. See [`docs/MCP-LIVE-PILOT.md`](docs/MCP-LIVE-PILOT.md) and [`scripts/mcp_live_client.py`](scripts/mcp_live_client.py) for evidence and the harness. This validates a custom model-client harness, not a third-party IDE/assistant host. The tested boundary is Unix file permissions, not a hostile-code sandbox: the model host and its MCP child share the agent UID, and network/process capabilities are not restricted. Do not treat the example host template as isolation by itself.
 
 ## Remote deployment, backup, and trust boundaries
 

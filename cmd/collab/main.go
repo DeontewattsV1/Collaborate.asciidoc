@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DeontewattsV1/Collaborate.asciidoc/internal/collab"
+	"collaborate/internal/collab"
 )
 
 type synchronizedHash struct {
