@@ -16,12 +16,14 @@ The existing [`Event schema`](Event%20schema), [`collab-agent`](collab-agent), a
 
 - Go 1.22+, Git, a C compiler, and `CGO_ENABLED=1` for the `collab` pilot.
 - Install SQLite development headers (`libsqlite3-dev` on Debian/Ubuntu) to build `cmd/collab`; `cmd/collaborate` uses its Go-module SQLite driver.
+- Python 3.10+ for the optional live MCP model-client harness and its unit tests.
 
 ```sh
 go mod tidy
 go test ./...
 go test -race ./...
 go vet ./...
+python3 -m unittest discover -s scripts -p 'test_*.py'
 go build -o ./collaborate ./cmd/collaborate
 ```
 
@@ -112,9 +114,9 @@ Set `COLLAB_AGENT` to choose the signing identity; command-level `--agent` overr
 
 `.github/workflows/ci.yml` runs on GitHub-hosted runners with only `contents: read`; checkout credentials are not persisted. The stable required-check context is `go-verify`; it runs formatting, uncached tests, race tests, `go vet`, and builds both CLIs with CGO/system SQLite enabled. This is remote CI evidence, not proof that the code is correct or that tests themselves are adequate.
 
-To make that check a merge gate, an administrator must activate a repository ruleset targeting the default branch. The proposed payload is [`main-required-ci.json`](.github/rulesets/main-required-ci.json): it requires pull requests and the `go-verify` status check from the GitHub Actions app, requires the branch to be current with the base, and grants no bypass actors. It does not require human approvals. Committing this JSON does not activate it; see [`docs/GITHUB-CI.md`](docs/GITHUB-CI.md) for the rationale and official references.
+The repository ruleset `main-require-independent-ci` (ID `27378635`) is active on the default branch. It requires pull requests and the `go-verify` status check from the GitHub Actions app, requires the branch to be current with the base, and grants no bypass actors. The submitted payload sets required approving reviews to zero; GitHub’s stored rule also enables an extra approval for unattributed changes. The checked-in [`main-required-ci.json`](.github/rulesets/main-required-ci.json) is the declarative payload; changes to GitHub’s live setting are separate. See [`docs/GITHUB-CI.md`](docs/GITHUB-CI.md) for rationale and official references.
 
-The MCP bridge binds one signing identity to each process, but separate MCP configurations alone do not create an OS security boundary. If agents run under the same user, that user may be able to read both private keys and access both worktrees. Do not call the example host configuration isolated. For isolation, run each model host under a separate UID or container with only its own worktree and credentials mounted, and test cross-worktree and broker-state writes as denied. This repository does not yet provide or verify that runtime isolation launcher. It also does not invoke or attest two actual model providers; provider and host choices are still required for the live pilot.
+The live MCP pilot connected OpenAI GPT-6 Luna and Google Gemini 3.8 Flash through separate MCP stdio processes, and tested each under a separate Unix UID. Own-workspace access succeeded; sibling worktree/key and broker-state access were denied. See [`docs/MCP-LIVE-PILOT.md`](docs/MCP-LIVE-PILOT.md) and [`scripts/mcp_live_client.py`](scripts/mcp_live_client.py) for evidence and the harness. This validates a custom model-client harness, not a third-party IDE/assistant host. The tested boundary is Unix file permissions, not a hostile-code sandbox: the model host and its MCP child share the agent UID, and network/process capabilities are not restricted. Do not treat the example host template as isolation by itself.
 
 ## Remote deployment, backup, and trust boundaries
 
