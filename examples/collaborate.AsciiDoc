@@ -1,0 +1,25 @@
+= collaborate: session acceptance
+:session: acceptance
+:ledger-events: 2
+:ledger-head: 0d4e290dadc34a6c1dd32bcbc68526b231f39dec24115f20cb949bf3719aeb96
+
+== Activity
+
+[cols="1,2,2,4",options="header"]
+|===
+|Seq |Time (UTC) |Agent |Event
+|1 |2026-11-16 10:32:35 |alpha |Claimed [demo.txt] — edit demo
+|2 |2026-11-16 10:32:35 |alpha |Commit receipt 111d74d5636333ca2963865f762c89077dcda5ea (diff fce9685458ae4bce8bfd134f6de2afe4825cd102c22f5eeda85b5b316c82713f)
+|===
+
+== Receipts
+
+[cols="1,1,5",options="header"]
+|===
+|Seq |Agent |Receipt details
+|2 |alpha |commit `111d74d5636333ca2963865f762c89077dcda5ea`; files: `demo.txt`; diff sha256: `fce9685458ae4bce8bfd134f6de2afe4825cd102c22f5eeda85b5b316c82713f`
+|===
+
+== Integrity
+
+Verify the event chain and signatures with `collaborate verify`.

@@ -1,95 +1,99 @@
 # Collaborate.asciidoc
+multi agent dispatch parallel coordination shared context verification
 
-**Live multi-model development coordination with a verifiable event ledger and human-readable AsciiDoc receipts.**
+## Current prototype
 
-`collab` is an experimental Go CLI and local coordination broker. Different AI coding tools can use the same broker from a terminal or through the included MCP stdio adapter. Agents can message each other, claim nonoverlapping repository paths, renew/release leases, report commits and local test runs, and subscribe to events. A SQLite-backed, broker-signed hash chain is the source of truth; `collaborate.adoc` is a deterministic view of it.
+This repository now includes a local-first Go prototype for multi-agent repository coordination. Its broker records signed requests in an append-only, SHA-256 hash-chained SQLite ledger; agents can claim and release path leases, exchange short messages, and write signed Git commit receipts. `collaborate render` creates a deterministic AsciiDoc session report.
 
-**Status: v0.1 research prototype, not a production authorization boundary.** This repository is public. Do not send proprietary prompts, secrets, tokens, or confidential source content into a public log or documentation site. The broker signs *what it received*, not the claimed model identity, Git authorship, or test authenticity. Path leases are enforced in the broker's APIs but do **not** prevent direct filesystem writes; separate Git worktrees and protected integration branches remain necessary.
+This is an MVP scaffold, not a production multi-agent runtime. It does **not** launch or adapt model CLIs, isolate model worktrees automatically, or prevent an agent from editing files without first claiming them. Leases coordinate clients that follow the protocol; an OS-level filesystem guard or controlled edit shim is still needed to enforce writes.
 
-## Architecture
+The existing [`Event schema`](Event%20schema), [`collab-agent`](collab-agent), and [`AsciiDoc`](AsciiDoc) files describe the intended protocol and target experience. The implemented subset and its limitations are documented below. A rendered sample from the runnable prototype is available at [`examples/collaborate.AsciiDoc`](examples/collaborate.AsciiDoc).
 
-```mermaid
-flowchart LR
-    A[Agent A CLI / MCP] --> B[Local or private-network collab broker]
-    C[Agent B CLI / MCP] --> B
-    D[Agent C CLI / MCP] --> B
-    B --> Q[SQLite: events + leases + agent registry]
-    B --> S[SSE event stream]
-    S --> A
-    S --> C
-    S --> D
-    Q --> R[Broker-signed hash-chain verification]
-    Q --> P[Deterministic collaborate.adoc report]
-    A --> W1[Git worktree A]
-    C --> W2[Git worktree B]
-    W1 --> G[Human-reviewed Git integration / CI]
-    W2 --> G
-```
+## Requirements
 
-## Install and run
+- Go 1.22+
+- Git
+- The SQLite driver is a Go module dependency and is downloaded during the first build.
 
-Requirements: Go 1.22+, Git, C compiler, and SQLite3 **development headers and library** (e.g. `libsqlite3-dev` on Debian/Ubuntu). No external Go modules are needed. This build requires `CGO_ENABLED=1`.
+## Build and test
 
 ```sh
-CGO_ENABLED=1 go build -o collab ./cmd/collab
-export COLLAB_TOKEN="$(openssl rand -hex 32)"
-./collab serve -db .collab/state.sqlite -key .collab/broker.key -pub .collab/broker.pub
+go mod tidy
+go test ./...
+go vet ./...
+go build -o ./collaborate ./cmd/collaborate
 ```
 
-The server listens on `127.0.0.1:8787`. In additional terminals, supply the same token via your secret manager or protected environment variable; never commit it to Git. For multiple hosts, use a private network tunnel or dedicated authenticated TLS reverse proxy and avoid exposing the raw local HTTP endpoint.
+## Two-agent local demo
+
+In terminal 1, start the broker. It intentionally binds only to loopback; do not expose it directly to the network.
 
 ```sh
-export COLLAB_TOKEN='<value supplied securely>'
-./collab register -agent gpt -model 'gpt-model-label'
-./collab register -agent claude -model 'claude-model-label'
-./collab watch -after 0                  # continuous event stream
-./collab say -agent gpt -to claude -body 'I am changing the API contract; please review it.'
-./collab claim -agent gpt -path internal/auth -ttl 120
-./collab renew -agent gpt -lease '<lease_id_from_claim>' -ttl 120
+./collaborate serve --db /tmp/collaborate-demo.sqlite
 ```
 
-Create separate working directories for agents. The branches should be unique for each session and model:
+In terminal 2, make a throwaway repository and initialize a session:
 
 ```sh
-./collab worktree -repo . -branch collab/session-1/gpt -path ../repo-gpt
-./collab worktree -repo . -branch collab/session-1/claude -path ../repo-claude
+mkdir -p /tmp/collaborate-demo-repo
+cd /tmp/collaborate-demo-repo
+git init
+git config user.name Demo
+git config user.email demo@example.invalid
+echo 'hello' > note.txt
+git add note.txt && git commit -m initial
+/path/to/collaborate init --session demo-1 --repo "$PWD"
+/path/to/collaborate register --agent A --model model-a --repo "$PWD"
+/path/to/collaborate register --agent B --model model-b --repo "$PWD"
 ```
 
-After committing real changes in the agent's worktree:
+Agent A claims the file. Agent B's competing claim is rejected while A's lease is live:
 
 ```sh
-SHA=$(git -C ../repo-gpt rev-parse HEAD)
-./collab receipt -repo ../repo-gpt -agent gpt -commit "$SHA" -summary 'Auth parser refactor'
-./collab gate -agent gpt -commit "$SHA" -workdir ../repo-gpt -- go test ./...
-./collab release -agent gpt -lease '<lease_id_from_claim>'
-./collab report -db .collab/state.sqlite -key .collab/broker.key -out collaborate.adoc
-./collab verify -db .collab/state.sqlite -pub .collab/broker.pub -expected-head '<head_from_report>'
+COLLAB_AGENT=A /path/to/collaborate claim --intent 'update note' note.txt
+COLLAB_AGENT=B /path/to/collaborate claim --intent 'competing update' note.txt
+# Expected: HTTP 409 lease conflict naming agent A
 ```
 
-The `receipt` CLI verifies the Git commit exists locally and derives affected paths from its diff, then the broker checks those paths against current leases. A separate API client could still submit fictitious Git SHAs: independent repository/CI verification must happen at the merge gate.
-
-## Model integration (MCP)
-
-Run `./collab mcp` as a subprocess in any client that supports Model Context Protocol over stdio. The same broker handles calls from multiple clients, with JSON-RPC MCP tools: `collab_register`, `collab_say`, `collab_claim`, `collab_renew`, `collab_release`, `collab_receipt`, and `collab_events`. Each client needs its own live terminal/process with `COLLAB_URL` and `COLLAB_TOKEN` set securely. `collab_events` offers cursored polling; the terminal `collab watch` offers push delivery via SSE. This is an interoperable **tool interface**, not a claim of direct API access to any particular hosted model.
-
-For a disposable two-agent simulation (requires Bash, Git, curl, and Python 3), run `bash examples/demo.sh`. It prints the temporary folder containing a rendered AsciiDoc receipt.
-
-Full protocol, MCP setup, threat model, and limitations are in [`docs/PROTOCOL.adoc`](docs/PROTOCOL.adoc), [`docs/MCP.md`](docs/MCP.md), and [`docs/SECURITY.md`](docs/SECURITY.md).
-
-## Verification
+After editing and staging a change, commit and record its receipt, then verify and render:
 
 ```sh
-CGO_ENABLED=1 go test -race ./...
-CGO_ENABLED=1 go vet ./...
-CGO_ENABLED=1 go build ./cmd/collab
+echo 'collaboration works' >> note.txt
+git add note.txt
+COLLAB_AGENT=A /path/to/collaborate commit -m 'Update note'
+/path/to/collaborate verify --repo "$PWD"
+/path/to/collaborate render --repo "$PWD" > collaborate.AsciiDoc
 ```
 
-The test suite covers concurrent collision handling, message delivery, lease renewals, receipts against held paths, HTTP bearer authorization, SSE, deterministic rendering, and tamper detection with a pinned key. It does **not** certify remote identity, sandboxing, distributed consensus, or production-safe operation.
+The receipt contains the commit SHA, a SHA-256 of the commit patch, and the paths reported by Git. It is a signed agent attestation, not independent proof that the broker checked out and re-derived the commit. Keep `.collab/` private: it contains local config and agent private keys.
 
-## What is deliberately not implemented yet
+## CLI commands
 
-Per-agent credentials and cryptographic identity; container-level filesystem enforcement; independent CI attestation and GitHub protected-branch integration; merge queue; crash-resistant multi-broker streaming; encrypted-at-rest logs; external cloud deployment; and a browser-based visual dashboard. These are explicit security and product gates, not implied by the existence of the broker.
+- `serve --db FILE [--addr 127.0.0.1:8787] [--lease-ttl 90s]` — run the loopback broker.
+- `init --session ID --repo DIR [--url URL]` — create session config and register the session with the broker.
+- `register --agent ID --model MODEL` — generate an Ed25519 keypair locally and register its public key.
+- `claim --intent TEXT PATH...`, `release PATH...`, `renew` — manage exclusive, expiring exact-path leases.
+- `say MESSAGE...` — append an agent message.
+- `commit -m MESSAGE` — commit already-staged Git changes and append a signed receipt; `receipt` records the current `HEAD` without creating a commit.
+- `spawn --agent ID --branch BRANCH` — create a Git worktree and branch (does not start an AI agent).
+- `status`, `verify`, `render` — inspect active leases, verify the whole ledger, and render the AsciiDoc report.
 
-## Authorship, provenance, and license
+Set `COLLAB_AGENT` to select the signing identity. Private keys live at `.collab/keys/<agent>.key` and are created with mode `0600` on Unix-like systems.
 
-Project direction and research PI: **Deonté O'dell Watts** — ORCID [0009-0005-8586-3650](https://orcid.org/0009-0005-8586-3650), GoodShyt Group Inc. Implemented as AI-assisted prototype source under the repository's Apache-2.0 license. This attribution does not by itself establish invention priority, originality, or exclusive rights. © 2026 Deonté O'dell Watts. First documented in this prototype: 2026-11-16.
+## Design and security boundaries
+
+- The service refuses non-loopback listen addresses. The prototype has no remote authentication/TLS deployment configuration.
+- Session creation and agent registration are unauthenticated bootstrap routes. Loopback binding is part of the prototype's trust boundary.
+- Agent API requests are Ed25519-signed and timestamped with one-time nonces. Events contain the request digest/signature and link to the prior event hash. Verification checks both the hash chain and signatures against registered public keys.
+- Lease acquisition is all-or-nothing for the requested exact paths, with TTL expiry and server-side conflict checks. Directory-prefix overlap, hunk-level leases, and write interception are not implemented.
+- Commit receipts currently trust the client-provided commit SHA and file list. The broker does not inspect Git objects, re-run tests, enforce a merge queue, check gate logs, or require reviewer quorum.
+- The AsciiDoc renderer uses fixed ordering and event timestamps, so repeated renders of the same ledger are byte-identical.
+
+## Suggested next steps
+
+1. Add integration tests for concurrent claims, lease expiry, request replay, and broker restart.
+2. Derive receipt file lists and patch hashes on a trusted server-side checkout, and independently re-run configured gates.
+3. Add an edit shim or filesystem guard so unleased writes are blocked rather than merely discouraged.
+4. Isolate agents in separate worktrees, add a merge queue/review workflow, and handle overlapping directory paths.
+5. Add an authenticated remote deployment (TLS/mTLS or a private network), key rotation/revocation, and append-only backup/export.
+6. Implement model adapters as separate plugins that call the broker protocol; this repo currently coordinates identities but does not invoke models.
