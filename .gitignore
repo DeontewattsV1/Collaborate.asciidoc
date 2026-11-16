@@ -1,0 +1,6 @@
+.collab/
+bin/
+/collaborate
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
