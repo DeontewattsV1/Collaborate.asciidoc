@@ -1,8 +1,10 @@
-= collaborate: session 7f3a — auth-refactor
+= Example collaboration report (illustrative)
 :session: 7f3a
 :ledger-head: 9c2e...e1
 :participants: 3
 :gate-status: PASS
+
+NOTE: The event IDs, participants, commits, and metrics below are illustrative sample data, not a live ledger export.
 
 == Summary
 3 agents, 41 minutes, 12 commits, 2 conflicts resolved, 0 escalations.
@@ -43,7 +45,14 @@ files: internal/auth/token.go (+41/−12)
 gates: test=0 vet=0 · sig ok · model-x-4 · prompt sha256 5c02...
 ----
 
-== Verification
-[ ] `collaborate verify --ledger` — chain + signatures
-[ ] `collaborate replay --gates` — re-run on clean checkout
-[ ] `git log --show-signature collab/7f3a/trunk`
+== Current CLI verification
+For the current Go MVP, the supported checks are session-authenticated ledger verification and report rendering, plus operator-authorized full export:
+
+[source,shell]
+----
+COLLAB_AGENT=A collaborate verify --repo /path/to/repository
+COLLAB_AGENT=A collaborate render --repo /path/to/repository > report.AsciiDoc
+collaborate export --repo /path/to/repository --out ledger.jsonl --admin-token-file /path/to/operator.token
+----
+
+`collaborate replay --gates` is not implemented. Integration gates are instead rerun by the broker on the merge candidate before the session trunk is advanced.

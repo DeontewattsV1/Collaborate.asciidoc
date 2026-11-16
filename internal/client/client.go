@@ -4,6 +4,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -16,9 +18,13 @@ import (
 )
 
 type Config struct {
-	URL     string `json:"url"`
-	Session string `json:"session"`
-	Repo    string `json:"repo"`
+	URL            string `json:"url"`
+	Session        string `json:"session"`
+	Repo           string `json:"repo"`
+	TrunkBranch    string `json:"trunk_branch,omitempty"`
+	CAFile         string `json:"ca_file,omitempty"`
+	ClientCertFile string `json:"client_cert_file,omitempty"`
+	ClientKeyFile  string `json:"client_key_file,omitempty"`
 }
 type Client struct {
 	URL, Session, Agent string
@@ -86,6 +92,38 @@ func FindRepo(start string) (string, error) {
 func New(url, session, agent string, priv ed25519.PrivateKey) *Client {
 	return &Client{URL: strings.TrimRight(url, "/"), Session: session, Agent: agent, Private: priv, HTTP: &http.Client{Timeout: 20 * time.Second}}
 }
+func NewConfigured(cfg Config, agent string, priv ed25519.PrivateKey) (*Client, error) {
+	c := New(cfg.URL, cfg.Session, agent, priv)
+	if (cfg.ClientCertFile == "") != (cfg.ClientKeyFile == "") {
+		return nil, fmt.Errorf("both client certificate and key must be configured")
+	}
+	if cfg.CAFile == "" && cfg.ClientCertFile == "" {
+		return c, nil
+	}
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+	if cfg.CAFile != "" {
+		pem, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return nil, err
+		}
+		roots := x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("CA file contains no certificates")
+		}
+		tlsConfig.RootCAs = roots
+	}
+	if cfg.ClientCertFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.ClientCertFile, cfg.ClientKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsConfig
+	c.HTTP = &http.Client{Transport: transport, Timeout: 20 * time.Second}
+	return c, nil
+}
 func (c *Client) Do(method, path string, body any) ([]byte, error) {
 	var data []byte
 	var err error
@@ -124,7 +162,7 @@ func (c *Client) Do(method, path string, body any) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	out, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	out, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
 		return nil, err
 	}
