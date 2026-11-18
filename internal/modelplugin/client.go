@@ -81,9 +81,30 @@ func (c Client) PostJSON(ctx context.Context, path string, headers map[string]st
 	if err != nil {
 		return fmt.Errorf("encode provider request: %w", err)
 	}
+	data, err := c.PostRawJSON(ctx, path, headers, body)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, responseBody); err != nil {
+		return fmt.Errorf("decode provider response: %w", err)
+	}
+	return nil
+}
+
+// PostRawJSON sends an already-encoded JSON request and returns the bounded raw
+// JSON response. It applies the same redirect, timeout, status, and body limits
+// as PostJSON, and is used by sandboxed provider plugins whose request shape is
+// constructed in WASI while the host retains all network and credential access.
+func (c Client) PostRawJSON(ctx context.Context, path string, headers map[string]string, body []byte) ([]byte, error) {
+	if c.http == nil {
+		return nil, errors.New("provider client is not initialized")
+	}
+	if !json.Valid(body) {
+		return nil, errors.New("provider request body is not valid JSON")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("create provider request: %w", err)
+		return nil, fmt.Errorf("create provider request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -92,23 +113,23 @@ func (c Client) PostJSON(ctx context.Context, path string, headers map[string]st
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("provider request failed: %w", err)
+		return nil, fmt.Errorf("provider request failed: %w", err)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return fmt.Errorf("read provider response: %w", err)
+		return nil, fmt.Errorf("read provider response: %w", err)
 	}
 	if len(data) > maxResponseBytes {
-		return fmt.Errorf("provider response exceeds %d bytes", maxResponseBytes)
+		return nil, fmt.Errorf("provider response exceeds %d bytes", maxResponseBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("provider returned HTTP %s", resp.Status)
+		return nil, fmt.Errorf("provider returned HTTP %s", resp.Status)
 	}
-	if err := json.Unmarshal(data, responseBody); err != nil {
-		return fmt.Errorf("decode provider response: %w", err)
+	if !json.Valid(data) {
+		return nil, errors.New("provider response is not valid JSON")
 	}
-	return nil
+	return data, nil
 }
 
 // Publish records model output by calling the authenticated broker capability.

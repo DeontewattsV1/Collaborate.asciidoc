@@ -3,6 +3,7 @@ module collaborate
 go 1.22
 
 require (
+	github.com/tetratelabs/wazero v1.8.2
 	golang.org/x/sys v0.16.0
 	modernc.org/sqlite v1.29.5
 )
