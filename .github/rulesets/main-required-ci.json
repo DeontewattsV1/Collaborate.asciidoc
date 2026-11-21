@@ -31,10 +31,6 @@
           {
             "context": "go-verify",
             "integration_id": 15368
-          },
-          {
-            "context": "agent-registry",
-            "integration_id": 15368
           }
         ]
       }

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"collaborate/internal/agentregistry"
 	"collaborate/internal/broker"
 	"collaborate/internal/client"
 	"collaborate/internal/store"
@@ -42,17 +41,13 @@ func rpc(method string, id int, params any) string {
 	return string(b)
 }
 
-func testRegistry(agent string, tools ...string) *agentregistry.Registry {
-	return &agentregistry.Registry{Agents: []agentregistry.Agent{{ID: agent, Status: "active", AllowedTools: tools}}}
-}
-
 func TestMCPToolsAreLimitedToCoordinationAndProtocolHandshake(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cli := client.New("http://127.0.0.1:1", "s", "a", priv)
-	srv := &Server{Broker: cli, Registry: testRegistry("test", "mcp:collaborate_claim", "mcp:collaborate_renew", "mcp:collaborate_release", "mcp:collaborate_say", "mcp:collaborate_inbox", "mcp:collaborate_receipt"), AgentID: "test"}
+	srv := &Server{Broker: cli}
 	got := runRPC(t, srv,
 		rpc("initialize", 1, map[string]any{"protocolVersion": protocolVersion, "capabilities": map[string]any{}, "clientInfo": map[string]string{"name": "test", "version": "1"}}),
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
@@ -107,7 +102,7 @@ func TestTwoAgentMCPClientsShareBrokerWithSeparateSignatures(t *testing.T) {
 	ts := httptest.NewServer((&broker.Server{Store: s}).Handler())
 	defer ts.Close()
 	makeServer := func(agent string) *Server {
-		return &Server{Broker: client.New(ts.URL, "mcp-session", agent, keys[agent]), Registry: testRegistry(agent, "mcp:collaborate_say", "mcp:collaborate_inbox"), AgentID: agent}
+		return &Server{Broker: client.New(ts.URL, "mcp-session", agent, keys[agent])}
 	}
 	for i, agent := range []string{"agent-a", "agent-b"} {
 		msg := fmt.Sprintf("hello from %s", agent)
@@ -125,22 +120,5 @@ func TestTwoAgentMCPClientsShareBrokerWithSeparateSignatures(t *testing.T) {
 	}
 	if len(messages) != 2 || messages[0]["agent"] != "agent-a" || messages[1]["agent"] != "agent-b" {
 		t.Fatalf("shared MCP inbox=%s", content)
-	}
-}
-
-func TestRegistryHidesAndRejectsUnlistedMCPTools(t *testing.T) {
-	srv := &Server{Broker: client.New("http://127.0.0.1:1", "s", "claude", make([]byte, ed25519.PrivateKeySize)), Registry: testRegistry("claude", "mcp:collaborate_say"), AgentID: "claude"}
-	got := runRPC(t, srv,
-		rpc("tools/list", 1, map[string]any{}),
-		rpc("tools/call", 2, map[string]any{"name": "collaborate_claim", "arguments": map[string]any{"intent": "edit", "paths": []string{"file.txt"}}}),
-	)
-	tools := got[0]["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 1 || tools[0].(map[string]any)["name"] != "collaborate_say" {
-		t.Fatalf("visible tools=%v, want only collaborate_say", tools)
-	}
-	call := got[1]["result"].(map[string]any)
-	message := call["content"].([]any)[0].(map[string]any)["text"].(string)
-	if call["isError"] != true || !strings.Contains(message, "not authorized") {
-		t.Fatalf("unlisted tool not denied: %+v", call)
 	}
 }
