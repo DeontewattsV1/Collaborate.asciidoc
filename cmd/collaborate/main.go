@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"collaborate/internal/telemetry"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,8 +14,10 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"collaborate/internal/adapter"
@@ -55,13 +58,16 @@ Commands:
   rotate-key | revoke-key --version N
 	status | verify | render | export --out FILE [--admin-token-file FILE]
 		adapter list [--plugins DIR] | adapter run --name echo|openai-compatible|anthropic|gemini --prompt TEXT
-		adapter run --plugin MANIFEST.json --prompt TEXT [--registry FILE] [--registry-agent ID]
-		mcp [--repo DIR] --agent ID [--registry FILE] [--registry-agent ID]  stdio MCP server
+		adapter run --plugin MANIFEST.json --prompt TEXT
+		mcp --repo DIR --agent ID          stdio MCP coordination server
+		mcp [--repo DIR] --agent ID        stdio MCP server for one agent identity
+		github-check --pr N [--repo OWNER/NAME] [--registry FILE] [--comment] [--summary FILE] [--json]
+		                                   coordinate GitHub PRs from any AI platform (needs GITHUB_TOKEN)
 
-	Set COLLAB_AGENT to select the registered signing identity. Remote serving requires mTLS.
-	Provider adapters read credentials/models from environment variables: openai-compatible uses COLLAB_MODEL_BASE_URL, COLLAB_MODEL, and COLLAB_MODEL_API_KEY (or OPENAI_API_KEY); Anthropic uses ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, ANTHROPIC_API_KEY; Gemini uses GEMINI_BASE_URL, GEMINI_MODEL, GEMINI_API_KEY (or GOOGLE_API_KEY).
-	WASI plugins read the provider key from the environment variable named by their manifest.
-	`)
+Set COLLAB_AGENT to select the registered signing identity. Remote serving requires mTLS.
+Provider adapters read credentials/models from environment variables: openai-compatible uses COLLAB_MODEL_BASE_URL, COLLAB_MODEL, and COLLAB_MODEL_API_KEY (or OPENAI_API_KEY); Anthropic uses ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, ANTHROPIC_API_KEY; Gemini uses GEMINI_BASE_URL, GEMINI_MODEL, GEMINI_API_KEY (or GOOGLE_API_KEY).
+WASI plugins read the provider key from the environment variable named by their manifest.
+`)
 }
 func abs(p string) string { a, e := filepath.Abs(p); fatal(e); return a }
 func rootOrCwd(explicit string) (string, error) {
@@ -298,6 +304,18 @@ func main() {
 		}
 		token, e := adminToken(*adminTokenFile)
 		fatal(e)
+		otelShutdown, e := telemetry.Setup(context.Background(), "collaborate-broker")
+		fatal(e)
+		defer otelShutdown(context.Background())
+		go func() {
+			sig := make(chan os.Signal, 1)
+			signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+			<-sig
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = otelShutdown(ctx)
+			os.Exit(0)
+		}()
 		srv := &broker.Server{Store: s, LeaseTTL: *ttl, Gates: gates, ExportDir: *exportDir, AdminToken: token}
 		fmt.Printf("collaborate broker listening on %s (lease TTL %s)\n", *addr, ttl.String())
 		fatal(srv.ListenTLS(*addr, *cert, *key, *clientCA))
@@ -702,6 +720,8 @@ func main() {
 		}
 		fatal(e)
 		fmt.Println(result.Text)
+	case "github-check":
+		os.Exit(runGitHubCheck(args, os.Stdout, os.Stderr))
 	case "mcp":
 		fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 		repo := fs.String("repo", "", "project directory containing .collab configuration")

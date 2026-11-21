@@ -29,6 +29,14 @@ go build -o ./collaborate ./cmd/collaborate
 
 The tests cover simultaneous conflicting claims, lease expiry/takeover, SQLite close/reopen persistence, signed request replay rejection, hierarchical lease overlap, key rotation/revocation, session-scoped review/read access, trusted receipt derivation, gate pass/fail, unleased and symlink-escape write rejection, independent review, queue integration, and append-only export recovery/tamper detection. The suite does not yet perform a real TLS handshake or kill/restart a broker process end-to-end.
 
+## Any AI platform via GitHub
+
+AI platforms that only reach the repository as a GitHub App, an authorized OAuth app, or under your account (Claude, Copilot, Codex, Cursor, Devin, Gemini/Jules, Manus, cubic, CodeRabbit, and others) can coordinate without running the broker. The `collaborate-coordination` workflow runs `collaborate github-check` on every pull request. It treats each open PR as its agent's lease over the paths it changes, plus `Collaborate-Claim: PATH` lines in its description, and fails a later PR that overlaps an earlier one. It identifies agents from `.github/collaborate-agents.json`, checks that approvals come from a different identity, and keeps a sticky comment listing all open agent work as shared context. See [`docs/GITHUB-AGENTS.md`](docs/GITHUB-AGENTS.md).
+
+## Observability
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` (plus the usual `OTEL_*` variables) before `collaborate serve` to export OpenTelemetry traces and metrics, for example to Grafana Cloud. See [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
+
 ## Local setup
 
 Create an operator-owned gate configuration **before starting the broker**; integration is refused when no trusted gate is configured:
@@ -105,8 +113,9 @@ Gate configuration is not read from a submitted branch. Commands are passed as a
 - `rotate-key`, `revoke-key --version N` — rotate the current Ed25519 key and revoke an older key version. Old private keys are archived locally during rotation; protect or remove those archives as your key-retention policy requires.
 - `status`, `verify`, `render` — signed, session-scoped reads. Set `COLLAB_AGENT` or use `--agent`; `verify` validates the full ledger chain.
 - `export --out FILE [--repo DIR] [--admin-token-file FILE]` — append/validate a full-ledger JSONL snapshot; requires the operator token when one is configured.
-- `mcp --repo DIR --agent ID [--registry FILE] [--registry-agent ID]` — run the stdio MCP bridge for exactly one agent. The registry defaults to `.github/agent-registry.json`; only explicitly granted tools are listed and executable. See [`examples/mcp-hosts.template.json`](examples/mcp-hosts.template.json). It intentionally exposes no shell or arbitrary filesystem operation.
-- `adapter list [--plugins DIR]`, `adapter run --name echo|openai-compatible|anthropic|gemini --prompt TEXT`, or `adapter run --plugin MANIFEST.json --prompt TEXT [--registry FILE] [--registry-agent ID]` — run a compiled-in provider or a sandboxed WASI module. WASI modules require an active registry agent with an exact `adapter:<manifest-name>` grant before the module is loaded. Dynamic modules use a strict JSON manifest and an API key environment variable; see [`docs/WASI-PLUGINS.md`](docs/WASI-PLUGINS.md). Compiled-in provider configuration uses `COLLAB_MODEL_BASE_URL`, `COLLAB_MODEL`, and `COLLAB_MODEL_API_KEY` (or `OPENAI_API_KEY`) for OpenAI-compatible endpoints; `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`, and `ANTHROPIC_API_KEY` for Anthropic; and `GEMINI_BASE_URL`, `GEMINI_MODEL`, and `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for Gemini.
+- `github-check --pr N [--repo OWNER/NAME] [--registry FILE] [--comment] [--summary FILE] [--json]` — evaluate one pull request's leases, conflicts, and review independence through the GitHub API (requires `GITHUB_TOKEN`); used by the `collaborate-coordination` workflow.
+- `mcp --repo DIR --agent ID` — run the stdio MCP bridge for exactly one agent. See [`examples/mcp-hosts.template.json`](examples/mcp-hosts.template.json). It intentionally exposes no shell or arbitrary filesystem operation.
+- `adapter list [--plugins DIR]`, `adapter run --name echo|openai-compatible|anthropic|gemini --prompt TEXT`, or `adapter run --plugin MANIFEST.json --prompt TEXT` — run a compiled-in provider or a sandboxed WASI module. Dynamic modules use a strict JSON manifest and an API key environment variable; see [`docs/WASI-PLUGINS.md`](docs/WASI-PLUGINS.md). Compiled-in provider configuration uses `COLLAB_MODEL_BASE_URL`, `COLLAB_MODEL`, and `COLLAB_MODEL_API_KEY` (or `OPENAI_API_KEY`) for OpenAI-compatible endpoints; `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`, and `ANTHROPIC_API_KEY` for Anthropic; and `GEMINI_BASE_URL`, `GEMINI_MODEL`, and `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for Gemini.
 
 Set `COLLAB_AGENT` to choose the signing identity; command-level `--agent` overrides it. Project config and private keys are under `.collab/`, which should remain private and untracked.
 

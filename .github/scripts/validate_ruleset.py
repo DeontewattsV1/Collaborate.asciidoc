@@ -44,8 +44,18 @@ def validate(path: Path = RULESET_PATH) -> None:
     if len(pull_request) != 1:
         fail("ruleset must contain exactly one pull_request rule")
     pr_parameters = pull_request[0].get("parameters")
-    if not isinstance(pr_parameters, dict) or pr_parameters.get("required_approving_review_count") != 0:
-        fail("ruleset approval count differs from the reviewed proposal")
+    if not isinstance(pr_parameters, dict):
+        fail("pull_request parameters must be an object")
+    # Mirrors the governance gate (docs/GITHUB-GOVERNANCE-GATE.md and
+    # scripts/test_ruleset_policy.py): at least one independent approval that
+    # is invalidated by later pushes.
+    approvals = pr_parameters.get("required_approving_review_count")
+    if not isinstance(approvals, int) or isinstance(approvals, bool) or approvals < 1:
+        fail("ruleset must require at least one approving review")
+    if pr_parameters.get("dismiss_stale_reviews_on_push") is not True:
+        fail("ruleset must dismiss stale approvals on push")
+    if pr_parameters.get("require_last_push_approval") is not True:
+        fail("ruleset must require approval of the most recent push")
 
     status_rules = [rule for rule in rules if rule.get("type") == "required_status_checks"]
     if len(status_rules) != 1:
@@ -67,7 +77,7 @@ def validate(path: Path = RULESET_PATH) -> None:
     if missing:
         fail(f"ruleset must require {', '.join(sorted(missing))} from GitHub Actions ({EXPECTED_INTEGRATION})")
 
-    print("Ruleset valid: active default-branch PR rule requires strict go-verify and agent-registry from GitHub Actions; no bypass actors.")
+    print(f"Ruleset valid: active default-branch PR rule requires {approvals}+ fresh approval(s) and strict {EXPECTED_CHECK} from GitHub Actions; no bypass actors.")
 
 
 if __name__ == "__main__":
