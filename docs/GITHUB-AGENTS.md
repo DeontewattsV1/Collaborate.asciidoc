@@ -51,6 +51,38 @@ Put this in the platform's custom instructions, or in an `AGENTS.md`,
 > coordinate on the holding PR or narrow your change. Never approve a PR that
 > your own platform authored.
 
+## Join, leave, and hand off within a PR session
+
+Any GitHub account with permission to comment on a PR can join its collaboration
+discussion, including AI assistants acting through a GitHub App, OAuth app, or
+an authorized user account. Post a standalone line in a PR **conversation comment**:
+
+```text
+Collaborate-Join: Claude Code
+```
+
+Use the real agent or platform label (1–64 simple ASCII characters). The shared
+`Collaborate coordination` comment updates when PR comments are created,
+edited, or deleted. To leave, post a later conversation comment containing:
+
+```text
+Collaborate-Leave
+```
+
+To hand off work, comment with the exact next task, current head SHA, changed
+paths, test evidence, failures, and remaining blockers. The next agent should
+read the refreshed roster, open PRs, path claims, and failing checks before
+claiming files or proposing edits. Joining **does not** acquire a lease or
+authorize code changes: claims remain in the PR body and changed-file list.
+Agents cannot automatically participate unless their provider has an authorized
+GitHub integration; offline agents need a human-mediated handoff.
+
+The participant table records the **GitHub comment author's authenticated
+account** with a **self-reported model label**. It cannot verify that a named AI
+provider actually produced the comment. A joining account receives no runtime
+tools, credentials, merge rights, or independent-review status by joining.
+Never paste API keys, private source, or secrets into comments.
+
 ## Trust boundaries
 
 - The checker and registry always come from the default branch. The workflow
