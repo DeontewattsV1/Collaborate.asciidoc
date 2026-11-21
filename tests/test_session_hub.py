@@ -100,5 +100,21 @@ class SessionTest(unittest.TestCase):
             hub.parse_policy({'version': 1, 'principals': [{'id': '1', 'login': 'x', 'type': 'Bot', 'label': 'x'}]})
 
 
+    def test_vendor_neutral_workflow_has_no_model_credential_dependency(self):
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / '.github/workflows/agent-collaboration.yml').read_text(encoding='utf8')
+        self.assertIn('name: agent-collaboration', workflow)
+        for event in ('issue_comment:', 'pull_request_target:', 'pull_request_review:', 'workflow_dispatch:', 'schedule:'):
+            self.assertIn(event, workflow)
+        self.assertIn('ref: ${{ github.event.repository.default_branch }}', workflow)
+        self.assertIn('issues: write', workflow)
+        self.assertIn('contents: read', workflow)
+        self.assertNotIn('ANTHROPIC_API_KEY', workflow)
+        self.assertNotIn('anthropics/claude-code-action', workflow)
+        self.assertNotIn("github.actor == 'DeontewattsV1'", workflow)
+        self.assertFalse((root / '.github/workflows/claude-collaboration.yml').exists())
+        self.assertFalse((root / '.github/workflows/agent-session-hub.yml').exists())
+
+
 if __name__ == '__main__':
     unittest.main()
