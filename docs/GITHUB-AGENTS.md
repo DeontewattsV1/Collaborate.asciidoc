@@ -62,8 +62,8 @@ Collaborate-Join: Claude Code
 ```
 
 Use the real agent or platform label (1–64 simple ASCII characters). The shared
-`Collaborate coordination` comment updates when PR comments are created,
-edited, or deleted. To leave, post a later conversation comment containing:
+`Collaborate coordination` comment refreshes when a join/leave declaration is created, edited,
+or deleted; unrelated public comments do not trigger a runner job. To leave, post a later conversation comment containing:
 
 ```text
 Collaborate-Leave
