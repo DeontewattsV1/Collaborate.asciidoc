@@ -24,6 +24,7 @@ import (
 	"collaborate/internal/adapters/anthropic"
 	"collaborate/internal/adapters/gemini"
 	"collaborate/internal/adapters/openai"
+	"collaborate/internal/agentregistry"
 	"collaborate/internal/broker"
 	"collaborate/internal/client"
 	"collaborate/internal/mcpserver"
@@ -153,6 +154,15 @@ func openProject(explicit, agent string) (string, client.Config, *client.Client,
 	}
 	_, cli, e := getClient(r, agent)
 	return r, c, cli, e
+}
+func agentRegistryPath(repo, configured string) string {
+	if configured == "" {
+		configured = filepath.Join(".github", "agent-registry.json")
+	}
+	if filepath.IsAbs(configured) {
+		return configured
+	}
+	return filepath.Join(repo, configured)
 }
 func currentDir() string { p, e := os.Getwd(); fatal(e); return p }
 func runGit(dir string, args ...string) ([]byte, error) {
@@ -635,6 +645,8 @@ func main() {
 		name := fs.String("name", "", "registered adapter name (default: echo)")
 		pluginManifest := fs.String("plugin", "", "WASI provider manifest JSON path")
 		prompt := fs.String("prompt", "", "adapter prompt")
+		registryFile := fs.String("registry", "", "agent registry JSON path (default: .github/agent-registry.json in repository)")
+		registryAgent := fs.String("registry-agent", "", "registry agent ID to authorize (default: broker agent ID)")
 		agent := mustAgentFlag(fs)
 		_ = fs.Parse(args[1:])
 		if *pluginManifest != "" && *name != "" {
@@ -643,13 +655,21 @@ func main() {
 		if *pluginManifest == "" && *name == "" {
 			*name = "echo"
 		}
-		_, _, cli, e := openProject("", *agent)
+		projectRepo, _, cli, e := openProject("", *agent)
 		fatal(e)
 		registry := adapter.NewRegistry()
 		fatal(registry.Register(adapter.Echo{}))
 		var dynamic *wasmplugin.Adapter
 		if *pluginManifest != "" {
-			var err error
+			manifest, err := wasmplugin.ReadManifest(*pluginManifest)
+			fatal(err)
+			authorizationAgent := *registryAgent
+			if authorizationAgent == "" {
+				authorizationAgent = cli.Agent
+			}
+			policy, err := agentregistry.Load(agentRegistryPath(projectRepo, *registryFile))
+			fatal(err)
+			fatal(policy.Authorize(authorizationAgent, "adapter:"+manifest.Name))
 			dynamic, err = wasmplugin.Load(*pluginManifest, os.LookupEnv)
 			fatal(err)
 			fatal(registry.Register(dynamic))
@@ -705,11 +725,19 @@ func main() {
 	case "mcp":
 		fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 		repo := fs.String("repo", "", "project directory containing .collab configuration")
+		registryFile := fs.String("registry", "", "agent registry JSON path (default: .github/agent-registry.json in repository)")
+		registryAgent := fs.String("registry-agent", "", "registry agent ID to authorize (default: broker agent ID)")
 		agent := mustAgentFlag(fs)
 		_ = fs.Parse(args)
-		_, _, cli, err := openProject(*repo, *agent)
+		projectRepo, _, cli, err := openProject(*repo, *agent)
 		fatal(err)
-		fatal((&mcpserver.Server{Broker: cli}).Serve(os.Stdin, os.Stdout))
+		policy, err := agentregistry.Load(agentRegistryPath(projectRepo, *registryFile))
+		fatal(err)
+		authorizationAgent := *registryAgent
+		if authorizationAgent == "" {
+			authorizationAgent = cli.Agent
+		}
+		fatal((&mcpserver.Server{Broker: cli, Registry: policy, AgentID: authorizationAgent}).Serve(os.Stdin, os.Stdout))
 	default:
 		usage()
 		os.Exit(2)
