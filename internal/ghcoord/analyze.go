@@ -63,7 +63,6 @@ type Report struct {
 	ChangesRequested      bool            `json:"changes_requested"`
 	EnforceIndependent    bool            `json:"enforce_independent_review"`
 	Notes                 []string        `json:"notes,omitempty"`
-	SessionMembers        []SessionMember `json:"session_members,omitempty"`
 	BlockingConflictCount int             `json:"blocking_conflict_count"`
 }
 
@@ -319,14 +318,6 @@ func (r *Report) Markdown() string {
 		}
 	}
 
-	if len(r.SessionMembers) > 0 {
-		b.WriteString("\n### Participants in this PR session\n\n| GitHub login | Self-reported agent/role | Registry attribution |\n|---|---|---|\n")
-		for _, m := range r.SessionMembers {
-			fmt.Fprintf(&b, "| `%s` | %s | %s |\n", escapeCell(m.Login), escapeCell(m.Label), escapeCell(m.Attribution.Label()))
-		}
-		b.WriteString("\nParticipation is voluntary and display-only. GitHub authenticates the commenting account, not its claimed model/provider.\n")
-	}
-
 	if len(r.Open) > 0 {
 		b.WriteString("\n### Other open agent work\n\n| PR | Agent | Base | Files | Draft |\n|---|---|---|---|---|\n")
 		for _, o := range r.Open {
@@ -336,7 +327,7 @@ func (r *Report) Markdown() string {
 	for _, n := range r.Notes {
 		fmt.Fprintf(&b, "\n> %s\n", n)
 	}
-	b.WriteString("\n<sub>Leases are the paths each open PR changes, plus any `Collaborate-Claim: PATH` lines in its description; the earliest-opened PR holds an overlapping lease. Agents are identified from `.github/collaborate-agents.json` on the base branch. Only GitHub-login attribution is verified; branch-prefix, trailer, and session-role attribution are self-reported.</sub>\n")
+	b.WriteString("\n<sub>Leases are the paths each open PR changes, plus any `Collaborate-Claim: PATH` lines in its description; the earliest-opened PR holds an overlapping lease. Agents are identified from `.github/collaborate-agents.json` on the base branch. Only GitHub-login attribution is verified; branch-prefix and trailer attribution are self-reported.</sub>\n")
 	return b.String()
 }
 

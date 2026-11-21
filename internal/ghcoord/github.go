@@ -261,16 +261,6 @@ func (c *Client) Check(ctx context.Context, reg *Registry, repo string, number, 
 		rs = append(rs, Review{Reviewer: r.User.Login, State: r.State, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt})
 	}
 	rep := Analyze(reg, current, open, rs)
-	// A join or leave is a GitHub issue comment on this pull request.
-	// Commenter login is verified by GitHub; the model label is not.
-	comments, commentsTruncated, err := list[ghComment](ctx, c, fmt.Sprintf("%s/issues/%d/comments?per_page=100", base, number))
-	if err != nil {
-		return nil, err
-	}
-	rep.SessionMembers = ParseSessionMembers(reg, comments)
-	if commentsTruncated {
-		rep.Notes = append(rep.Notes, "Session comments were truncated; the participant roster may be incomplete.")
-	}
 	if cur.State != "" && cur.State != "open" {
 		rep.Notes = append(rep.Notes, fmt.Sprintf("This PR is %s; it no longer holds a lease.", cur.State))
 		rep.BlockingConflictCount = 0
