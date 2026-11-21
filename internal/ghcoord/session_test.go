@@ -1,6 +1,7 @@
 package ghcoord
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -51,5 +52,34 @@ func TestSessionMembersRejectMalformedAndSpoofing(t *testing.T) {
 	}
 	if !validSessionLabel("Claude Code") || !validSessionLabel("GPT-6/Codex") {
 		t.Fatal("valid session label rejected")
+	}
+}
+
+func TestGitHubCheckLoadsLiveSessionMembers(t *testing.T) {
+	gh := newFakeGitHub(t)
+	gh.addPull(1, "DeontewattsV1", "codex/session-join", "2026-11-21T09:00:00Z", "", "docs/GITHUB-AGENTS.md")
+	gh.comments = []map[string]any{
+		{"id": int64(101), "body": "Collaborate-Join: Claude Code",
+			"user": map[string]string{"login": "claude[bot]"}},
+	}
+	client := &Client{BaseURL: gh.srv.URL, Token: "test-token"}
+	rep, err := client.Check(context.Background(), mustRegistry(t, testRegistry), "o/r", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.SessionMembers) != 1 || rep.SessionMembers[0].Login != "claude[bot]" {
+		t.Fatalf("session roster not loaded from GitHub comments: %+v", rep.SessionMembers)
+	}
+	if !strings.Contains(rep.Markdown(), "Participants in this PR session") ||
+		!strings.Contains(rep.Markdown(), "Claude Code") {
+		t.Fatalf("shared coordination comment omitted current session: %s", rep.Markdown())
+	}
+	gh.comments = append(gh.comments, map[string]any{
+		"id": int64(102), "body": "Collaborate-Leave",
+		"user": map[string]string{"login": "claude[bot]"},
+	})
+	rep, err = client.Check(context.Background(), mustRegistry(t, testRegistry), "o/r", 1, 10)
+	if err != nil || len(rep.SessionMembers) != 0 {
+		t.Fatalf("leave not applied; err=%v members=%+v", err, rep.SessionMembers)
 	}
 }
