@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"collaborate/internal/telemetry"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,8 +14,10 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"collaborate/internal/adapter"
@@ -274,6 +277,18 @@ func main() {
 		}
 		token, e := adminToken(*adminTokenFile)
 		fatal(e)
+		otelShutdown, e := telemetry.Setup(context.Background(), "collaborate-broker")
+		fatal(e)
+		defer otelShutdown(context.Background())
+		go func() {
+			sig := make(chan os.Signal, 1)
+			signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+			<-sig
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = otelShutdown(ctx)
+			os.Exit(0)
+		}()
 		srv := &broker.Server{Store: s, LeaseTTL: *ttl, Gates: gates, ExportDir: *exportDir, AdminToken: token}
 		fmt.Printf("collaborate broker listening on %s (lease TTL %s)\n", *addr, ttl.String())
 		fatal(srv.ListenTLS(*addr, *cert, *key, *clientCA))
