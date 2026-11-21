@@ -8,24 +8,30 @@ name: collaborate-coordination
 # Security: pull_request_target runs with the base repository's token, so this
 # workflow never checks out or executes pull request code. It builds the
 # checker and reads .github/collaborate-agents.json from the default branch,
-# and only reads PR metadata through the GitHub API.
+# and only reads PR metadata and comments through the GitHub API.
+# Comment events refresh session membership without executing comment content.
 
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, edited, ready_for_review, converted_to_draft]
   pull_request_review:
     types: [submitted, edited, dismissed]
+  issue_comment:
+    types: [created, edited, deleted]
 
 permissions:
   contents: read
   pull-requests: write
+  issues: read
 
 concurrency:
-  group: collaborate-coordination-${{ github.event.pull_request.number }}
+  group: collaborate-coordination-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
   coordinate:
+    # Issue comments also fire for non-PR issues: ignore those entirely.
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request != null
     name: coordinate
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -45,7 +51,7 @@ jobs:
       - name: Check leases and review independence
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         run: |
           "$RUNNER_TEMP/collaborate" github-check \
             --pr "$PR_NUMBER" \
