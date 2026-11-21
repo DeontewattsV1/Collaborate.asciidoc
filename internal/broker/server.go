@@ -719,65 +719,27 @@ func (s *Server) ListenTLS(addr, certFile, keyFile, clientCAFile string) error {
 	if (certFile == "") != (keyFile == "") {
 		return fmt.Errorf("TLS certificate and key must be supplied together")
 	}
-	httpServer := &http.Server{Addr: addr, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second}
+	httpServer := &http.Server{Addr: addr, Handler: telemetry.HTTP(s.Handler(), "collaborate-broker"), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second}
 	if certFile == "" {
-		httpServer.Handler = telemetry.HTTP(s.Handler(), "collaborate-broker")
 		return httpServer.ListenAndServe()
 	}
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return err
 	}
-	var pool *x509.CertPool
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
 	if clientCAFile != "" {
 		pem, err := os.ReadFile(clientCAFile)
 		if err != nil {
 			return err
 		}
-		pool = x509.NewCertPool()
+		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(pem) {
 			return fmt.Errorf("client CA file contains no certificates")
 		}
+		cfg.ClientCAs = pool
+		cfg.ClientAuth = tls.RequireAndVerifyClientCert
 	}
-	cfg, handler := tlsServing(s.Handler(), cert, pool)
-	httpServer.Handler = telemetry.HTTP(handler, "collaborate-broker")
 	httpServer.TLSConfig = cfg
 	return httpServer.ListenAndServeTLS("", "")
-}
-
-// tlsServing builds the TLS config and handler for a TLS listener. With a
-// client CA pool, mTLS is mandatory for every route except the unauthenticated
-// liveness probe (GET/HEAD /health), so external uptime monitors can reach it
-// without a client certificate. The handshake still verifies any certificate a
-// client presents (VerifyClientCertIfGiven); requireClientCert then rejects
-// every other request that arrived without a verified chain.
-func tlsServing(h http.Handler, cert tls.Certificate, clientCAs *x509.CertPool) (*tls.Config, http.Handler) {
-	cfg := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
-	if clientCAs == nil {
-		return cfg, h
-	}
-	cfg.ClientCAs = clientCAs
-	cfg.ClientAuth = tls.VerifyClientCertIfGiven
-	return cfg, requireClientCert(h)
-}
-
-// requireClientCert enforces a verified client certificate on every request
-// except the liveness probe. The exemption is an exact match on method and
-// path, so no other route (including /health/ subpaths) bypasses mTLS.
-func requireClientCert(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isHealthProbe(r) {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "verified client certificate required"})
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func isHealthProbe(r *http.Request) bool {
-	return (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == "/health" && r.URL.RawQuery == ""
 }
