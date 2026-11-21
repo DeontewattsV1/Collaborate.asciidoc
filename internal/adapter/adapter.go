@@ -1,12 +1,13 @@
 // Package adapter defines small, broker-aware model/provider adapters.
 //
 // Implementations receive broker capabilities rather than an HTTP client or
-// broker credentials. Provider adapters perform inference in Run and use only
-// the broker operations they need. Adapters that modify repository files
-// should claim their paths before writing and release them afterward; adapters should
+// broker credentials. Future OpenAI, Claude, or local-model adapters can
+// implement Adapter, perform inference in Run, and use only the broker
+// operations they need. Adapters that modify repository files should claim
+// their paths before writing and release them afterward; adapters should
 // submit a receipt only when they have a real commit and its metadata.
-// Provider credentials and HTTP setup live in provider-specific packages, not
-// this interface package.
+// Provider credentials and SDK setup belong to a future application layer,
+// not this package.
 package adapter
 
 import (
