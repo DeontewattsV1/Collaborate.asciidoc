@@ -56,9 +56,12 @@ class ValidateRulesetTest(unittest.TestCase):
             'last push unapproved': lambda c: pr(c).pop('require_last_push_approval'),
             'bypass actor': lambda c: c.update(bypass_actors=[{'actor_id': 1}]),
             'loose status policy': lambda c: status(c).update(strict_required_status_checks_policy=False),
-            'required check dropped': lambda c: status(c).update(required_status_checks=[
-                s for s in status(c)['required_status_checks'] if s.get('context') != 'go-verify']),
         }
+        # Dropping any one required check must fail, so a check added to
+        # EXPECTED_CHECKS later is covered automatically.
+        for check in sorted(self.v.EXPECTED_CHECKS):
+            cases[f'{check} dropped'] = lambda c, check=check: status(c).update(required_status_checks=[
+                s for s in status(c)['required_status_checks'] if s.get('context') != check])
         for name, mutate in cases.items():
             with self.subTest(name):
                 config = copy.deepcopy(self.policy)
