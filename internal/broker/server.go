@@ -3,6 +3,7 @@ package broker
 import (
 	"bufio"
 	"bytes"
+	"collaborate/internal/telemetry"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -718,7 +719,7 @@ func (s *Server) ListenTLS(addr, certFile, keyFile, clientCAFile string) error {
 	if (certFile == "") != (keyFile == "") {
 		return fmt.Errorf("TLS certificate and key must be supplied together")
 	}
-	httpServer := &http.Server{Addr: addr, Handler: s.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second}
+	httpServer := &http.Server{Addr: addr, Handler: telemetry.HTTP(s.Handler(), "collaborate-broker"), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second}
 	if certFile == "" {
 		return httpServer.ListenAndServe()
 	}

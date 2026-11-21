@@ -8,7 +8,7 @@ Multi-agent dispatch, parallel coordination, shared context, and verification.
 
 The `collaborate` scaffold authenticates Ed25519-signed agent requests, maintains expiring hierarchical path leases, and stores a signed, SHA-256 hash-chained event ledger in SQLite. It can create per-agent Git worktrees, accept edits through a lease-checked broker write endpoint, independently derive commit receipt metadata from the server-side Git checkout, run operator-configured gates against the merge candidate, and queue changes for independent review before merging them into a session trunk. The separate `collab` pilot does not inherit these properties; see its security notes.
 
-The `collaborate` CLI includes an MCP 2025-06-18 stdio bridge exposing six signed coordination tools for one configured agent: claim, renew, release, say, inbox, and receipt. Its two-agent protocol test uses separate Ed25519 identities against one broker. The separate `collab mcp` bridge follows the pilot's shared-token protocol. Neither bridge has been connected to an external model host in a live run. The optional OpenAI-compatible adapter makes one completion; it is not an MCP model host or an autonomous tool-calling loop.
+The `collaborate` CLI includes an MCP 2025-06-18 stdio bridge exposing six signed coordination tools for one configured agent: claim, renew, release, say, inbox, and receipt. Its two-agent protocol test uses separate Ed25519 identities against one broker. The separate `collab mcp` bridge follows the pilot's shared-token protocol. The `collaborate adapter` command includes compiled-in OpenAI-compatible, Anthropic Messages, and Google Gemini `generateContent` providers, plus dynamically loaded third-party WASI providers. Each provider makes one completion and records its text through the authenticated broker; this is not an MCP model host or an autonomous tool-calling loop. See [`docs/WASI-PLUGINS.md`](docs/WASI-PLUGINS.md) for the WASI protocol and security boundary.
 
 The existing [`Event schema`](Event%20schema), [`collab-agent`](collab-agent), and [`AsciiDoc`](AsciiDoc) files describe the protocol and target experience; the latter two include aspirational features that are not all implemented by this CLI. A sample deterministic report is available at [`examples/collaborate.AsciiDoc`](examples/collaborate.AsciiDoc).
 
@@ -28,6 +28,14 @@ go build -o ./collaborate ./cmd/collaborate
 ```
 
 The tests cover simultaneous conflicting claims, lease expiry/takeover, SQLite close/reopen persistence, signed request replay rejection, hierarchical lease overlap, key rotation/revocation, session-scoped review/read access, trusted receipt derivation, gate pass/fail, unleased and symlink-escape write rejection, independent review, queue integration, and append-only export recovery/tamper detection. The suite does not yet perform a real TLS handshake or kill/restart a broker process end-to-end.
+
+## Any AI platform via GitHub
+
+AI platforms that only reach the repository as a GitHub App, an authorized OAuth app, or under your account (Claude, Copilot, Codex, Cursor, Devin, Gemini/Jules, Manus, cubic, CodeRabbit, and others) can coordinate without running the broker. The `collaborate-coordination` workflow runs `collaborate github-check` on every pull request. It treats each open PR as its agent's lease over the paths it changes, plus `Collaborate-Claim: PATH` lines in its description, and fails a later PR that overlaps an earlier one. It identifies agents from `.github/collaborate-agents.json`, checks that approvals come from a different identity, and keeps a sticky comment listing all open agent work as shared context. See [`docs/GITHUB-AGENTS.md`](docs/GITHUB-AGENTS.md).
+
+## Observability
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` (plus the usual `OTEL_*` variables) before `collaborate serve` to export OpenTelemetry traces and metrics, for example to Grafana Cloud. See [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
 
 ## Local setup
 
@@ -105,8 +113,9 @@ Gate configuration is not read from a submitted branch. Commands are passed as a
 - `rotate-key`, `revoke-key --version N` — rotate the current Ed25519 key and revoke an older key version. Old private keys are archived locally during rotation; protect or remove those archives as your key-retention policy requires.
 - `status`, `verify`, `render` — signed, session-scoped reads. Set `COLLAB_AGENT` or use `--agent`; `verify` validates the full ledger chain.
 - `export --out FILE [--repo DIR] [--admin-token-file FILE]` — append/validate a full-ledger JSONL snapshot; requires the operator token when one is configured.
+- `github-check --pr N [--repo OWNER/NAME] [--registry FILE] [--comment] [--summary FILE] [--json]` — evaluate one pull request's leases, conflicts, and review independence through the GitHub API (requires `GITHUB_TOKEN`); used by the `collaborate-coordination` workflow.
 - `mcp --repo DIR --agent ID` — run the stdio MCP bridge for exactly one agent. See [`examples/mcp-hosts.template.json`](examples/mcp-hosts.template.json). It intentionally exposes no shell or arbitrary filesystem operation.
-- `adapter list`, `adapter run --name echo|openai-compatible --prompt TEXT` — run the deterministic fixture or a single OpenAI-compatible completion. Provider configuration uses `COLLAB_MODEL_BASE_URL`, `COLLAB_MODEL`, and `COLLAB_MODEL_API_KEY` (or `OPENAI_API_KEY`).
+- `adapter list [--plugins DIR]`, `adapter run --name echo|openai-compatible|anthropic|gemini --prompt TEXT`, or `adapter run --plugin MANIFEST.json --prompt TEXT` — run a compiled-in provider or a sandboxed WASI module. Dynamic modules use a strict JSON manifest and an API key environment variable; see [`docs/WASI-PLUGINS.md`](docs/WASI-PLUGINS.md). Compiled-in provider configuration uses `COLLAB_MODEL_BASE_URL`, `COLLAB_MODEL`, and `COLLAB_MODEL_API_KEY` (or `OPENAI_API_KEY`) for OpenAI-compatible endpoints; `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`, and `ANTHROPIC_API_KEY` for Anthropic; and `GEMINI_BASE_URL`, `GEMINI_MODEL`, and `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for Gemini.
 
 Set `COLLAB_AGENT` to choose the signing identity; command-level `--agent` overrides it. Project config and private keys are under `.collab/`, which should remain private and untracked.
 
@@ -128,4 +137,4 @@ Sensitive reads (leases, events, queue, rendered reports, and verification) requ
 
 Agent requests are timestamped and nonce-protected. The database stores event signatures and historical key versions so rotation/revocation does not invalidate verification of older events. Receipts are derived from the server checkout (commit tree, changed paths, and patch hash); gate results record outcome metadata and an output digest, not raw logs. Queue approval must come from an agent in the same session other than the submitter. The integration branch uses a compare-and-swap update-ref; a concurrent branch movement leaves the queue item retryable.
 
-On Linux, the broker-mediated `write` endpoint uses directory file descriptors, no-follow opens, and atomic replacement to reject traversal and symlink escapes. It blocks unleased writes made through that endpoint, but cannot stop an agent with direct filesystem access from bypassing it; use OS/container isolation or a filesystem guard if that enforcement is required. The adapter API is extensible at compile time; there are no dynamic Go-plugin loading hooks yet.
+On Linux, the broker-mediated `write` endpoint uses directory file descriptors, no-follow opens, and atomic replacement to reject traversal and symlink escapes. It blocks unleased writes made through that endpoint, but cannot stop an agent with direct filesystem access from bypassing it; use OS/container isolation or a filesystem guard if that enforcement is required. Provider adapters implement a shared Go interface; bundled providers are compiled into the CLI, while third-party providers can be loaded as sandboxed WASI modules. WASI capability limits and remaining trust assumptions are documented in [`docs/WASI-PLUGINS.md`](docs/WASI-PLUGINS.md).
