@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 RULESET_PATH = Path(__file__).resolve().parents[1] / "rulesets" / "main-required-ci.json"
-EXPECTED_CHECK = "go-verify"
+EXPECTED_CHECKS = {"go-verify", "agent-registry"}
 EXPECTED_INTEGRATION = 15368  # GitHub Actions app integration ID
 
 
@@ -68,15 +68,16 @@ def validate(path: Path = RULESET_PATH) -> None:
     checks = parameters.get("required_status_checks")
     if not isinstance(checks, list):
         fail("required_status_checks must be an array")
-    required = [
-        check for check in checks
-        if isinstance(check, dict) and check.get("context") == EXPECTED_CHECK
-        and check.get("integration_id") == EXPECTED_INTEGRATION
-    ]
-    if len(required) != 1:
-        fail(f"ruleset must require {EXPECTED_CHECK!r} from GitHub Actions ({EXPECTED_INTEGRATION})")
+    required = {
+        check.get("context")
+        for check in checks
+        if isinstance(check, dict) and check.get("integration_id") == EXPECTED_INTEGRATION
+    }
+    missing = EXPECTED_CHECKS - required
+    if missing:
+        fail(f"ruleset must require {', '.join(sorted(missing))} from GitHub Actions ({EXPECTED_INTEGRATION})")
 
-    print(f"Ruleset valid: active default-branch PR rule requires {approvals}+ fresh approval(s) and strict {EXPECTED_CHECK} from GitHub Actions; no bypass actors.")
+    print(f"Ruleset valid: active default-branch PR rule requires {approvals}+ fresh approval(s) and strict {', '.join(sorted(EXPECTED_CHECKS))} from GitHub Actions; no bypass actors.")
 
 
 if __name__ == "__main__":
