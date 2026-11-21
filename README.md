@@ -29,6 +29,10 @@ go build -o ./collaborate ./cmd/collaborate
 
 The tests cover simultaneous conflicting claims, lease expiry/takeover, SQLite close/reopen persistence, signed request replay rejection, hierarchical lease overlap, key rotation/revocation, session-scoped review/read access, trusted receipt derivation, gate pass/fail, unleased and symlink-escape write rejection, independent review, queue integration, and append-only export recovery/tamper detection. The suite does not yet perform a real TLS handshake or kill/restart a broker process end-to-end.
 
+## Any AI platform via GitHub
+
+AI platforms that only reach the repository as a GitHub App, an authorized OAuth app, or under your account (Claude, Copilot, Codex, Cursor, Devin, Gemini/Jules, Manus, cubic, CodeRabbit, and others) can coordinate without running the broker. The `collaborate-coordination` workflow runs `collaborate github-check` on every pull request. It treats each open PR as its agent's lease over the paths it changes, plus `Collaborate-Claim: PATH` lines in its description, and fails a later PR that overlaps an earlier one. It identifies agents from `.github/collaborate-agents.json`, checks that approvals come from a different identity, and keeps a sticky comment listing all open agent work as shared context. See [`docs/GITHUB-AGENTS.md`](docs/GITHUB-AGENTS.md).
+
 ## Observability
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` (plus the usual `OTEL_*` variables) before `collaborate serve` to export OpenTelemetry traces and metrics, for example to Grafana Cloud. See [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
@@ -109,6 +113,7 @@ Gate configuration is not read from a submitted branch. Commands are passed as a
 - `rotate-key`, `revoke-key --version N` — rotate the current Ed25519 key and revoke an older key version. Old private keys are archived locally during rotation; protect or remove those archives as your key-retention policy requires.
 - `status`, `verify`, `render` — signed, session-scoped reads. Set `COLLAB_AGENT` or use `--agent`; `verify` validates the full ledger chain.
 - `export --out FILE [--repo DIR] [--admin-token-file FILE]` — append/validate a full-ledger JSONL snapshot; requires the operator token when one is configured.
+- `github-check --pr N [--repo OWNER/NAME] [--registry FILE] [--comment] [--summary FILE] [--json]` — evaluate one pull request's leases, conflicts, and review independence through the GitHub API (requires `GITHUB_TOKEN`); used by the `collaborate-coordination` workflow.
 - `mcp --repo DIR --agent ID` — run the stdio MCP bridge for exactly one agent. See [`examples/mcp-hosts.template.json`](examples/mcp-hosts.template.json). It intentionally exposes no shell or arbitrary filesystem operation.
 - `adapter list`, `adapter run --name echo|openai-compatible --prompt TEXT` — run the deterministic fixture or a single OpenAI-compatible completion. Provider configuration uses `COLLAB_MODEL_BASE_URL`, `COLLAB_MODEL`, and `COLLAB_MODEL_API_KEY` (or `OPENAI_API_KEY`).
 
