@@ -77,7 +77,7 @@ def validate(path: Path = RULESET_PATH) -> None:
     if missing:
         fail(f"ruleset must require {', '.join(sorted(missing))} from GitHub Actions ({EXPECTED_INTEGRATION})")
 
-    print(f"Ruleset valid: active default-branch PR rule requires {approvals}+ fresh approval(s) and strict {EXPECTED_CHECK} from GitHub Actions; no bypass actors.")
+    print(f"Ruleset valid: active default-branch PR rule requires {approvals}+ fresh approval(s) and strict {', '.join(sorted(EXPECTED_CHECKS))} from GitHub Actions; no bypass actors.")
 
 
 if __name__ == "__main__":
