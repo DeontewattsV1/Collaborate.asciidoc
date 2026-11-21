@@ -94,6 +94,31 @@ func TestRunRejectsHierarchicalOverlap(t *testing.T) {
 	}
 }
 
+func TestRunRejectsRenameOutOfClaimedPath(t *testing.T) {
+	registry, event := writeGateFixtures(t, 10)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/acme/project/pulls/1/files":
+			_, _ = w.Write([]byte(`[{"filename":"internal/pkg/file.go"}]`))
+		case "/repos/acme/project/pulls":
+			_, _ = w.Write([]byte(`[{"number":2,"html_url":"https://github.com/acme/project/pull/2","user":{"login":"bob","id":20,"type":"User"},"head":{"ref":"copilot/other"},"base":{"ref":"main"}}]`))
+		case "/repos/acme/project/pulls/2/files":
+			// PR #2 renames the file out of the path PR #1 changes; only the
+			// rename's previous_filename overlaps.
+			_, _ = w.Write([]byte(`[{"filename":"moved/file.go","previous_filename":"internal/pkg/file.go"}]`))
+		default:
+			t.Errorf("unexpected GitHub API request %s", r.URL.String())
+			http.NotFound(w, r)
+		}
+	}))
+	defer api.Close()
+	var output strings.Builder
+	err := run(registry, event, "test-token", "acme/project", api.URL, &output)
+	if err == nil || !strings.Contains(err.Error(), "overlapping") || !strings.Contains(output.String(), "internal/pkg/file.go") || !strings.Contains(output.String(), "PR #2") {
+		t.Fatalf("err=%v output=%s, want rename-source overlap denial", err, output.String())
+	}
+}
+
 func TestRunRejectsUnknownAuthorBeforeGitHubAPI(t *testing.T) {
 	registry, event := writeGateFixtures(t, 999)
 	calls := 0

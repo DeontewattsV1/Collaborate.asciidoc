@@ -117,6 +117,45 @@ func TestResolvePullRequestAgent(t *testing.T) {
 	}
 }
 
+func botRegistryJSON() string {
+	return strings.Replace(validRegistryJSON(),
+		`"status":"unconfigured","branch_prefixes":["copilot/"],"allowed_tools":[]`,
+		`"status":"active","github_identities":[{"account_type":"bot","login":"copilot[bot]","github_user_id":44}],"branch_prefixes":["copilot/"],"allowed_tools":[]`, 1)
+}
+
+func TestResolveBotIdentity(t *testing.T) {
+	r, err := Parse([]byte(botRegistryJSON()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := r.ResolvePullRequestAgent(PullRequestIdentity{AccountType: "bot", Login: "copilot[bot]", GitHubUserID: 44}, "copilot/fix")
+	if err != nil || a.ID != "copilot" {
+		t.Fatalf("bot author resolved=%+v err=%v, want copilot", a, err)
+	}
+	// The numeric ID must match with the same account type: a user account that
+	// happens to share the bot's ID is a different identity.
+	if _, err := r.ResolvePullRequestAgent(PullRequestIdentity{AccountType: "user", Login: "copilot", GitHubUserID: 44}, "copilot/fix"); err == nil {
+		t.Fatal("user account with a bot's numeric ID was resolved as the bot")
+	}
+	// A registered bot cannot borrow another agent's branch namespace.
+	if _, err := r.ResolvePullRequestAgent(PullRequestIdentity{AccountType: "bot", Login: "copilot[bot]", GitHubUserID: 44}, "claude/fix"); err == nil {
+		t.Fatal("bot resolved under another agent's branch prefix")
+	}
+}
+
+func TestValidateRejectsMismatchedBotLogins(t *testing.T) {
+	for name, input := range map[string]string{
+		"bot without [bot] suffix": strings.Replace(botRegistryJSON(), `"login":"copilot[bot]"`, `"login":"copilot"`, 1),
+		"user with [bot] suffix":   strings.Replace(validRegistryJSON(), `"login":"alice"`, `"login":"alice[bot]"`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := Parse([]byte(input)); err == nil || !strings.Contains(err.Error(), "invalid login") {
+				t.Fatalf("err=%v, want invalid login error", err)
+			}
+		})
+	}
+}
+
 func TestResolveRejectsSharedIdentityWithoutMatchingPrefix(t *testing.T) {
 	input := strings.Replace(validRegistryJSON(), `{"agent_id":"copilot","display_name":"Copilot","status":"unconfigured","branch_prefixes":["copilot/"],"allowed_tools":[]}`, `{"agent_id":"copilot","display_name":"Copilot","status":"active","github_identities":[{"account_type":"user","login":"alice","github_user_id":10}],"branch_prefixes":["copilot/"],"allowed_tools":[]}`, 1)
 	r, err := Parse([]byte(input))
