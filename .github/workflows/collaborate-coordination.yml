@@ -31,7 +31,20 @@ concurrency:
 jobs:
   coordinate:
     # Issue comments also fire for non-PR issues: ignore those entirely.
-    if: github.event_name != 'issue_comment' || github.event.issue.pull_request != null
+    # Do not spend runner minutes on ordinary public PR comments. A changed
+    # join/leave declaration must refresh the roster, including edits and deletes.
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (
+        github.event.issue.pull_request != null &&
+        (
+          github.event.action == 'deleted' ||
+          contains(github.event.comment.body, 'Collaborate-Join:') ||
+          contains(github.event.comment.body, 'Collaborate-Leave') ||
+          contains(github.event.changes.body.from, 'Collaborate-Join:') ||
+          contains(github.event.changes.body.from, 'Collaborate-Leave')
+        )
+      )
     name: coordinate
     runs-on: ubuntu-latest
     timeout-minutes: 10
