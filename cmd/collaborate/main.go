@@ -21,11 +21,16 @@ import (
 	"time"
 
 	"collaborate/internal/adapter"
+	"collaborate/internal/adapters/anthropic"
+	"collaborate/internal/adapters/gemini"
+	"collaborate/internal/adapters/openai"
+	"collaborate/internal/agentregistry"
 	"collaborate/internal/broker"
 	"collaborate/internal/client"
 	"collaborate/internal/mcpserver"
 	"collaborate/internal/repoops"
 	"collaborate/internal/store"
+	"collaborate/internal/wasmplugin"
 )
 
 const defaultURL = "http://127.0.0.1:8787"
@@ -52,12 +57,16 @@ Commands:
   submit | queue | review --queue-id N --verdict approve|request_changes | integrate --queue-id N
   rotate-key | revoke-key --version N
 	status | verify | render | export --out FILE [--admin-token-file FILE]
-		adapter list | adapter run --name echo|openai-compatible --prompt TEXT
+		adapter list [--plugins DIR] | adapter run --name echo|openai-compatible|anthropic|gemini --prompt TEXT
+		adapter run --plugin MANIFEST.json --prompt TEXT
 		mcp --repo DIR --agent ID          stdio MCP coordination server
 		mcp [--repo DIR] --agent ID        stdio MCP server for one agent identity
+		github-check --pr N [--repo OWNER/NAME] [--registry FILE] [--comment] [--summary FILE] [--json]
+		                                   coordinate GitHub PRs from any AI platform (needs GITHUB_TOKEN)
 
 Set COLLAB_AGENT to select the registered signing identity. Remote serving requires mTLS.
-openai-compatible reads COLLAB_MODEL_BASE_URL, COLLAB_MODEL, and COLLAB_MODEL_API_KEY (or OPENAI_API_KEY) from the environment.
+Provider adapters read credentials/models from environment variables: openai-compatible uses COLLAB_MODEL_BASE_URL, COLLAB_MODEL, and COLLAB_MODEL_API_KEY (or OPENAI_API_KEY); Anthropic uses ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, ANTHROPIC_API_KEY; Gemini uses GEMINI_BASE_URL, GEMINI_MODEL, GEMINI_API_KEY (or GOOGLE_API_KEY).
+WASI plugins read the provider key from the environment variable named by their manifest.
 `)
 }
 func abs(p string) string { a, e := filepath.Abs(p); fatal(e); return a }
@@ -146,6 +155,15 @@ func openProject(explicit, agent string) (string, client.Config, *client.Client,
 	_, cli, e := getClient(r, agent)
 	return r, c, cli, e
 }
+func agentRegistryPath(repo, configured string) string {
+	if configured == "" {
+		configured = filepath.Join(".github", "agent-registry.json")
+	}
+	if filepath.IsAbs(configured) {
+		return configured
+	}
+	return filepath.Join(repo, configured)
+}
 func currentDir() string { p, e := os.Getwd(); fatal(e); return p }
 func runGit(dir string, args ...string) ([]byte, error) {
 	c := exec.Command("git", args...)
@@ -177,6 +195,15 @@ func adminToken(file string) (string, error) {
 		return token, nil
 	}
 	return strings.TrimSpace(os.Getenv("COLLAB_ADMIN_TOKEN")), nil
+}
+
+func firstEnv(names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func verifyExportPrefix(filename string, all []store.Event) (int, error) {
@@ -596,48 +623,121 @@ func main() {
 		fmt.Printf("ledger export appended/verified: %s\n", *outPath)
 	case "adapter":
 		if len(args) == 0 || args[0] == "list" {
-			fmt.Println("echo\nopenai-compatible")
+			fs := flag.NewFlagSet("adapter list", flag.ExitOnError)
+			pluginsDir := fs.String("plugins", "", "directory containing WASI provider manifests")
+			if len(args) > 1 {
+				_ = fs.Parse(args[1:])
+			}
+			fmt.Println("echo\nopenai-compatible\nanthropic\ngemini")
+			if *pluginsDir != "" {
+				manifests, err := wasmplugin.Discover(*pluginsDir)
+				fatal(err)
+				for _, manifest := range manifests {
+					fmt.Println(manifest.Name + " (WASI)")
+				}
+			}
 			return
 		}
 		if args[0] != "run" {
-			fatal(errors.New("usage: collaborate adapter list | run --name echo|openai-compatible --prompt TEXT"))
+			fatal(errors.New("usage: collaborate adapter list [--plugins DIR] | run --name NAME | --plugin MANIFEST.json --prompt TEXT"))
 		}
 		fs := flag.NewFlagSet("adapter run", flag.ExitOnError)
-		name := fs.String("name", "echo", "registered adapter name")
+		name := fs.String("name", "", "registered adapter name (default: echo)")
+		pluginManifest := fs.String("plugin", "", "WASI provider manifest JSON path")
 		prompt := fs.String("prompt", "", "adapter prompt")
+		registryFile := fs.String("registry", "", "agent registry JSON path (default: .github/agent-registry.json in repository)")
+		registryAgent := fs.String("registry-agent", "", "registry agent ID to authorize (default: broker agent ID)")
 		agent := mustAgentFlag(fs)
 		_ = fs.Parse(args[1:])
-		_, _, cli, e := openProject("", *agent)
+		if *pluginManifest != "" && *name != "" {
+			fatal(errors.New("use either --name or --plugin, not both"))
+		}
+		if *pluginManifest == "" && *name == "" {
+			*name = "echo"
+		}
+		projectRepo, _, cli, e := openProject("", *agent)
 		fatal(e)
 		registry := adapter.NewRegistry()
 		fatal(registry.Register(adapter.Echo{}))
-		if *name == "openai-compatible" {
-			endpoint := os.Getenv("COLLAB_MODEL_BASE_URL")
-			if endpoint == "" {
-				endpoint = "https://api.openai.com/v1"
-			}
-			model := os.Getenv("COLLAB_MODEL")
-			apiKey := os.Getenv("COLLAB_MODEL_API_KEY")
-			if apiKey == "" {
-				apiKey = os.Getenv("OPENAI_API_KEY")
-			}
-			provider, err := adapter.NewOpenAICompatible(endpoint, model, apiKey, nil)
+		var dynamic *wasmplugin.Adapter
+		if *pluginManifest != "" {
+			manifest, err := wasmplugin.ReadManifest(*pluginManifest)
 			fatal(err)
+			authorizationAgent := *registryAgent
+			if authorizationAgent == "" {
+				authorizationAgent = cli.Agent
+			}
+			policy, err := agentregistry.Load(agentRegistryPath(projectRepo, *registryFile))
+			fatal(err)
+			fatal(policy.Authorize(authorizationAgent, "adapter:"+manifest.Name))
+			dynamic, err = wasmplugin.Load(*pluginManifest, os.LookupEnv)
+			fatal(err)
+			fatal(registry.Register(dynamic))
+		} else if *name != "echo" {
+			var provider adapter.Adapter
+			switch *name {
+			case "openai-compatible":
+				endpoint := firstEnv("COLLAB_MODEL_BASE_URL", "OPENAI_BASE_URL")
+				if endpoint == "" {
+					endpoint = "https://api.openai.com/v1"
+				}
+				apiKey := firstEnv("COLLAB_MODEL_API_KEY", "OPENAI_API_KEY")
+				p, err := openai.New(endpoint, firstEnv("COLLAB_MODEL", "OPENAI_MODEL"), apiKey, nil)
+				fatal(err)
+				provider = p
+			case "anthropic":
+				endpoint := os.Getenv("ANTHROPIC_BASE_URL")
+				if endpoint == "" {
+					endpoint = "https://api.anthropic.com"
+				}
+				p, err := anthropic.New(endpoint, os.Getenv("ANTHROPIC_MODEL"), os.Getenv("ANTHROPIC_API_KEY"), nil)
+				fatal(err)
+				provider = p
+			case "gemini":
+				endpoint := os.Getenv("GEMINI_BASE_URL")
+				if endpoint == "" {
+					endpoint = "https://generativelanguage.googleapis.com"
+				}
+				p, err := gemini.New(endpoint, os.Getenv("GEMINI_MODEL"), firstEnv("GEMINI_API_KEY", "GOOGLE_API_KEY"), nil)
+				fatal(err)
+				provider = p
+			default:
+				fatal(fmt.Errorf("unknown adapter %q; run 'collaborate adapter list'", *name))
+			}
 			fatal(registry.Register(provider))
 		}
-		a, e := registry.Get(*name)
+		adapterName := *name
+		if dynamic != nil {
+			adapterName = dynamic.Name()
+		}
+		a, e := registry.Get(adapterName)
 		fatal(e)
 		result, e := a.Run(context.Background(), adapter.Request{Prompt: *prompt}, adapter.NewSignedBroker(cli))
+		if dynamic != nil {
+			if closeErr := dynamic.Close(context.Background()); e == nil {
+				e = closeErr
+			}
+		}
 		fatal(e)
 		fmt.Println(result.Text)
+	case "github-check":
+		os.Exit(runGitHubCheck(args, os.Stdout, os.Stderr))
 	case "mcp":
 		fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 		repo := fs.String("repo", "", "project directory containing .collab configuration")
+		registryFile := fs.String("registry", "", "agent registry JSON path (default: .github/agent-registry.json in repository)")
+		registryAgent := fs.String("registry-agent", "", "registry agent ID to authorize (default: broker agent ID)")
 		agent := mustAgentFlag(fs)
 		_ = fs.Parse(args)
-		_, _, cli, err := openProject(*repo, *agent)
+		projectRepo, _, cli, err := openProject(*repo, *agent)
 		fatal(err)
-		fatal((&mcpserver.Server{Broker: cli}).Serve(os.Stdin, os.Stdout))
+		policy, err := agentregistry.Load(agentRegistryPath(projectRepo, *registryFile))
+		fatal(err)
+		authorizationAgent := *registryAgent
+		if authorizationAgent == "" {
+			authorizationAgent = cli.Agent
+		}
+		fatal((&mcpserver.Server{Broker: cli, Registry: policy, AgentID: authorizationAgent}).Serve(os.Stdin, os.Stdout))
 	default:
 		usage()
 		os.Exit(2)
