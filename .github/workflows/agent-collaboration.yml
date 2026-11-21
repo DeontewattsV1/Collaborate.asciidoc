@@ -1,0 +1,144 @@
+name: agent-collaboration
+
+# Owner-initiated only. Untrusted public comments must not automatically
+# start a credential-bearing, write-capable model session.
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: 'Agent mention to coordinate (e.g. @agent, @claude)'
+        required: false
+        default: '@agent'
+
+permissions: {}
+
+concurrency:
+  group: agent-collaboration-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  coordinate-session:
+    if: >-
+      github.actor == 'DeontewattsV1' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
+          (
+            contains(github.event.comment.body, '@agent') ||
+            contains(github.event.comment.body, '@claude') ||
+            contains(github.event.comment.body, '@codex') ||
+            contains(github.event.comment.body, '@gemini') ||
+            contains(github.event.comment.body, '@copilot') ||
+            contains(github.event.comment.body, '@manus') ||
+            contains(github.event.comment.body, '@cursor') ||
+            contains(github.event.comment.body, '@devin')
+          )
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out trusted default branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Verify actor, mentioned agent, and write session handoff summary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          DISPATCH_AGENT: ${{ inputs.agent }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$ACTOR" != "DeontewattsV1" ]; then
+            echo "Unauthorized actor: $ACTOR"
+            exit 1
+          fi
+
+          TARGET_TEXT="$COMMENT_BODY"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TARGET_TEXT="${DISPATCH_AGENT:-@agent}"
+          fi
+
+          MENTIONED_AGENTS=""
+          for agent in "@agent" "@claude" "@codex" "@gemini" "@copilot" "@manus" "@cursor" "@devin"; do
+            if printf '%s' "$TARGET_TEXT" | grep -Fq "$agent"; then
+              MENTIONED_AGENTS="${MENTIONED_AGENTS:+$MENTIONED_AGENTS, }$agent"
+            fi
+          done
+
+          if [ -z "$MENTIONED_AGENTS" ]; then
+            echo "No supported agent mention found."
+            exit 1
+          fi
+
+          {
+            echo "## Synchronized Session Handoff Status"
+            echo ""
+            echo "- **Status:** Synchronized"
+            echo "- **Actor:** \`$ACTOR\` (verified)"
+            echo "- **Event:** \`$EVENT_NAME\`"
+            echo "- **Mentioned Agent(s):** $MENTIONED_AGENTS"
+            echo "- **Trusted Default Branch:** \`$DEFAULT_BRANCH\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  claude-agent:
+    needs: coordinate-session
+    if: >-
+      github.actor == 'DeontewattsV1' &&
+      (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'workflow_dispatch' && contains(inputs.agent, '@claude'))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      id-token: write
+    steps:
+      - name: Check Claude credentials
+        id: check-secrets
+        env:
+          HAS_API_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          if [ "$HAS_API_KEY" = "true" ] || [ "$HAS_OAUTH_TOKEN" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is configured. Skipping anthropics/claude-code-action@v1. Add either secret in repository Settings > Secrets and variables > Actions to enable @claude execution."
+            {
+              echo "## Claude Agent Setup Notice"
+              echo ""
+              echo "Skipped \`anthropics/claude-code-action@v1\` because neither \`ANTHROPIC_API_KEY\` nor \`CLAUDE_CODE_OAUTH_TOKEN\` is configured in repository secrets."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check out trusted default branch
+        if: steps.check-secrets.outputs.configured == 'true'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Run Claude Code on the maintainer's request
+        if: steps.check-secrets.outputs.configured == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allow_fork_prs: 'false'-
