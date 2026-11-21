@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"collaborate/internal/agentregistry"
 	"collaborate/internal/client"
 	"collaborate/internal/store"
 )
@@ -20,7 +21,11 @@ import (
 const protocolVersion = "2025-06-18"
 const maxMessageBytes = 1 << 20
 
-type Server struct{ Broker *client.Client }
+type Server struct {
+	Broker   *client.Client
+	Registry *agentregistry.Registry
+	AgentID  string
+}
 type rpcRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id"`
@@ -109,7 +114,7 @@ func (s *Server) dispatch(req rpcRequest) (any, *rpcError) {
 	case "notifications/initialized":
 		return nil, nil
 	case "tools/list":
-		return map[string]any{"tools": toolDefinitions()}, nil
+		return map[string]any{"tools": s.authorizedToolDefinitions()}, nil
 	case "tools/call":
 		var p struct {
 			Name      string                     `json:"name"`
@@ -149,6 +154,21 @@ func stringSchema(description string) map[string]string {
 	return map[string]string{"type": "string", "description": description}
 }
 
+func (s *Server) authorizedToolDefinitions() []map[string]any {
+	if s == nil || s.Registry == nil || s.AgentID == "" {
+		return []map[string]any{}
+	}
+	all := toolDefinitions()
+	allowed := make([]map[string]any, 0, len(all))
+	for _, tool := range all {
+		name, _ := tool["name"].(string)
+		if s.Registry.Authorize(s.AgentID, "mcp:"+name) == nil {
+			allowed = append(allowed, tool)
+		}
+	}
+	return allowed
+}
+
 func decodeArg[T any](args map[string]json.RawMessage, key string, required bool) (T, error) {
 	var zero T
 	b, ok := args[key]
@@ -165,6 +185,12 @@ func decodeArg[T any](args map[string]json.RawMessage, key string, required bool
 	return v, nil
 }
 func (s *Server) call(name string, args map[string]json.RawMessage) (string, error) {
+	if s == nil || s.Registry == nil || s.AgentID == "" {
+		return "", errors.New("MCP registry authorization is not configured")
+	}
+	if err := s.Registry.Authorize(s.AgentID, "mcp:"+name); err != nil {
+		return "", err
+	}
 	if args == nil {
 		args = map[string]json.RawMessage{}
 	}

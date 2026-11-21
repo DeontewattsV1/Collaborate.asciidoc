@@ -21,6 +21,7 @@ import (
 	"collaborate/internal/adapters/anthropic"
 	"collaborate/internal/adapters/gemini"
 	"collaborate/internal/adapters/openai"
+	"collaborate/internal/agentregistry"
 	"collaborate/internal/broker"
 	"collaborate/internal/client"
 	"collaborate/internal/mcpserver"
@@ -54,9 +55,8 @@ Commands:
   rotate-key | revoke-key --version N
 	status | verify | render | export --out FILE [--admin-token-file FILE]
 		adapter list [--plugins DIR] | adapter run --name echo|openai-compatible|anthropic|gemini --prompt TEXT
-		adapter run --plugin MANIFEST.json --prompt TEXT
-		mcp --repo DIR --agent ID          stdio MCP coordination server
-		mcp [--repo DIR] --agent ID        stdio MCP server for one agent identity
+		adapter run --plugin MANIFEST.json --prompt TEXT [--registry FILE] [--registry-agent ID]
+		mcp [--repo DIR] --agent ID [--registry FILE] [--registry-agent ID]  stdio MCP server
 
 	Set COLLAB_AGENT to select the registered signing identity. Remote serving requires mTLS.
 	Provider adapters read credentials/models from environment variables: openai-compatible uses COLLAB_MODEL_BASE_URL, COLLAB_MODEL, and COLLAB_MODEL_API_KEY (or OPENAI_API_KEY); Anthropic uses ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, ANTHROPIC_API_KEY; Gemini uses GEMINI_BASE_URL, GEMINI_MODEL, GEMINI_API_KEY (or GOOGLE_API_KEY).
@@ -148,6 +148,15 @@ func openProject(explicit, agent string) (string, client.Config, *client.Client,
 	}
 	_, cli, e := getClient(r, agent)
 	return r, c, cli, e
+}
+func agentRegistryPath(repo, configured string) string {
+	if configured == "" {
+		configured = filepath.Join(".github", "agent-registry.json")
+	}
+	if filepath.IsAbs(configured) {
+		return configured
+	}
+	return filepath.Join(repo, configured)
 }
 func currentDir() string { p, e := os.Getwd(); fatal(e); return p }
 func runGit(dir string, args ...string) ([]byte, error) {
@@ -618,6 +627,8 @@ func main() {
 		name := fs.String("name", "", "registered adapter name (default: echo)")
 		pluginManifest := fs.String("plugin", "", "WASI provider manifest JSON path")
 		prompt := fs.String("prompt", "", "adapter prompt")
+		registryFile := fs.String("registry", "", "agent registry JSON path (default: .github/agent-registry.json in repository)")
+		registryAgent := fs.String("registry-agent", "", "registry agent ID to authorize (default: broker agent ID)")
 		agent := mustAgentFlag(fs)
 		_ = fs.Parse(args[1:])
 		if *pluginManifest != "" && *name != "" {
@@ -626,13 +637,21 @@ func main() {
 		if *pluginManifest == "" && *name == "" {
 			*name = "echo"
 		}
-		_, _, cli, e := openProject("", *agent)
+		projectRepo, _, cli, e := openProject("", *agent)
 		fatal(e)
 		registry := adapter.NewRegistry()
 		fatal(registry.Register(adapter.Echo{}))
 		var dynamic *wasmplugin.Adapter
 		if *pluginManifest != "" {
-			var err error
+			manifest, err := wasmplugin.ReadManifest(*pluginManifest)
+			fatal(err)
+			authorizationAgent := *registryAgent
+			if authorizationAgent == "" {
+				authorizationAgent = cli.Agent
+			}
+			policy, err := agentregistry.Load(agentRegistryPath(projectRepo, *registryFile))
+			fatal(err)
+			fatal(policy.Authorize(authorizationAgent, "adapter:"+manifest.Name))
 			dynamic, err = wasmplugin.Load(*pluginManifest, os.LookupEnv)
 			fatal(err)
 			fatal(registry.Register(dynamic))
@@ -686,11 +705,19 @@ func main() {
 	case "mcp":
 		fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 		repo := fs.String("repo", "", "project directory containing .collab configuration")
+		registryFile := fs.String("registry", "", "agent registry JSON path (default: .github/agent-registry.json in repository)")
+		registryAgent := fs.String("registry-agent", "", "registry agent ID to authorize (default: broker agent ID)")
 		agent := mustAgentFlag(fs)
 		_ = fs.Parse(args)
-		_, _, cli, err := openProject(*repo, *agent)
+		projectRepo, _, cli, err := openProject(*repo, *agent)
 		fatal(err)
-		fatal((&mcpserver.Server{Broker: cli}).Serve(os.Stdin, os.Stdout))
+		policy, err := agentregistry.Load(agentRegistryPath(projectRepo, *registryFile))
+		fatal(err)
+		authorizationAgent := *registryAgent
+		if authorizationAgent == "" {
+			authorizationAgent = cli.Agent
+		}
+		fatal((&mcpserver.Server{Broker: cli, Registry: policy, AgentID: authorizationAgent}).Serve(os.Stdin, os.Stdout))
 	default:
 		usage()
 		os.Exit(2)
