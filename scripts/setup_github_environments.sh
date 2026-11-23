@@ -18,9 +18,9 @@ REPO="${REPO:-DeontewattsV1/Collaborate.asciidoc}"
 # Settings > Environments > <name> > Variables. Check each provider's model
 # list: IDs change often.
 declare -A MODEL=(
-  [agent-openai]="${OPENAI_MODEL:-gpt-6.1-sol}"
+  [agent-openai]="${OPENAI_MODEL:-gpt-6.2-sol}"
   [agent-anthropic]="${ANTHROPIC_MODEL:-claude-sonnet-5-5}"
-  [agent-gemini]="${GEMINI_MODEL:-gemini-3.5-flash}"
+  [agent-gemini]="${GEMINI_MODEL:-gemini-3.8-flash}"
   [agent-xai]="${XAI_MODEL:-grok-4.7}"
 )
 
