@@ -103,6 +103,32 @@ class SessionTest(unittest.TestCase):
         self.assertEqual(active[0]['event']['pr'], 20)
         self.assertEqual(active[0]['event']['head'], 'a' * 40)
 
+    def test_roleless_join_uses_unknown_not_renderer_crash(self):
+        joined = mkcomment(1, 'join')
+        joined['body'] = hub.COMMAND + json.dumps(
+            {'v': 1, 'action': 'join', 'instance': 'run-1', 'pr': 20})
+        active, rejected, digest = hub.reconcile([joined], POLICY, BASE)
+        self.assertEqual(len(active), 1)
+        self.assertFalse(rejected)
+        self.assertEqual(active[0]['event']['role'], 'unknown')
+        rendered = hub.render(active, [], digest, [], 'org/repo')
+        self.assertIn('unknown', rendered)
+
+    def test_asserted_pr_head_checked_against_live_open_pr(self):
+        live_sha = 'a' * 40
+        prs = [{'number': 20, 'title': 'active work',
+                'head': {'sha': live_sha}, 'base': {'ref': 'main'}, 'draft': True}]
+        current = {'v': 1, 'action': 'join', 'instance': 'one', 'pr': 20,
+                   'role': 'codex', 'head': live_sha}
+        stale = {**current, 'head': 'b' * 40}
+        closed = {**current, 'pr': 21}
+        without_head = {key: value for key, value in current.items() if key != 'head'}
+        self.assertEqual(hub.verify_claim(current, prs), 'current')
+        self.assertEqual(hub.verify_claim(stale, prs), 'stale')
+        self.assertEqual(hub.verify_claim(closed, prs), 'not-open')
+        self.assertEqual(hub.verify_claim(without_head, prs), 'unasserted')
+        self.assertIsNone(hub.verify_claim({'role': 'codex'}, prs))
+
     def test_rejoin_after_leave_starts_new_episode(self):
         events = [mkcomment(1, 'join'), mkcomment(2, 'leave', minutes=10),
                   mkcomment(3, 'join', minutes=12)]
