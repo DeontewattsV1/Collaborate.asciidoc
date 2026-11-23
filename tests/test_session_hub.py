@@ -80,6 +80,45 @@ class SessionTest(unittest.TestCase):
         events = [mkcomment(1, 'join'), mkcomment(2, 'join', user_id=11, login='person', typ='User')]
         self.assertEqual(len(hub.reconcile(events, POLICY, BASE)[0]), 2)
 
+    def test_heartbeat_cannot_replace_join_role_or_pr(self):
+        joined = mkcomment(1, 'join', role='claude', pr=20)
+        heartbeat = mkcomment(2, 'heartbeat', minutes=40, role='gemini', pr=99)
+        active, _, _ = hub.reconcile([joined, heartbeat], POLICY, BASE + timedelta(minutes=41))
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0]['last_seen'], BASE + timedelta(minutes=40))
+        self.assertEqual(active[0]['event']['role'], 'claude')
+        self.assertEqual(active[0]['event']['pr'], 20)
+
+    def test_metadata_free_heartbeat_keeps_join_context(self):
+        joined = mkcomment(1, 'join', role='claude', pr=20)
+        body = json.loads(joined['body'][len(hub.COMMAND):])
+        body['head'] = 'a' * 40
+        joined['body'] = hub.COMMAND + json.dumps(body)
+        heartbeat = mkcomment(2, 'heartbeat', minutes=40)
+        heartbeat['body'] = hub.COMMAND + json.dumps(
+            {'v': 1, 'action': 'heartbeat', 'instance': 'run-1'})
+        active, _, _ = hub.reconcile([joined, heartbeat], POLICY, BASE + timedelta(minutes=41))
+        self.assertEqual(active[0]['event']['role'], 'claude')
+        self.assertEqual(active[0]['event']['pr'], 20)
+        self.assertEqual(active[0]['event']['head'], 'a' * 40)
+
+    def test_rejoin_after_leave_starts_new_episode(self):
+        events = [mkcomment(1, 'join'), mkcomment(2, 'leave', minutes=10),
+                  mkcomment(3, 'join', minutes=12)]
+        active, _, _ = hub.reconcile(events, POLICY, BASE + timedelta(minutes=13))
+        self.assertEqual(active[0]['first_seen'], BASE + timedelta(minutes=12))
+        self.assertEqual(active[0]['id'], 3)
+
+    def test_rejoin_after_expiry_starts_new_episode(self):
+        events = [mkcomment(1, 'join'), mkcomment(2, 'join', minutes=121)]
+        active, _, _ = hub.reconcile(events, POLICY, BASE + timedelta(minutes=122))
+        self.assertEqual(active[0]['first_seen'], BASE + timedelta(minutes=121))
+
+    def test_live_rejoin_preserves_current_episode_start(self):
+        events = [mkcomment(1, 'join'), mkcomment(2, 'join', minutes=20)]
+        active, _, _ = hub.reconcile(events, POLICY, BASE + timedelta(minutes=21))
+        self.assertEqual(active[0]['first_seen'], BASE)
+
     def test_upsert_idempotence(self):
         client = object.__new__(hub.GitHub)
         client.request = Mock()
