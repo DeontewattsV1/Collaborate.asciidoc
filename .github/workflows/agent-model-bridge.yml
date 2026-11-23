@@ -1,0 +1,226 @@
+name: agent-model-bridge
+
+# Additive to agent-collaboration.yml, collaborate-coordination.yml and the
+# authenticated Agent Session Hub (#34). No merges, branch writes, or PR code
+# execution. Paid external-model calls require an owner's explicit dispatch.
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Open PR number to review (diff sent to selected model providers)'
+        required: true
+        type: number
+      provider:
+        description: 'Model provider(s) with preconfigured, protected environments'
+        required: true
+        type: choice
+        default: openai
+        options: [openai, anthropic, gemini, xai, all]
+      phase:
+        description: 'Review, or review plus a second cross-model challenge round'
+        required: true
+        type: choice
+        default: review
+        options: [review, challenge]
+
+permissions: {}
+
+concurrency:
+  group: agent-model-bridge-pr-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  scope:
+    name: scope-and-authorize
+    # The owner starts paid calls; expand this allowlist only through a reviewed
+    # change to the trusted default branch. Environments add reviewer approval.
+    if: github.repository == 'DeontewattsV1/Collaborate.asciidoc' && github.ref == 'refs/heads/main' && github.actor == 'DeontewattsV1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      providers: ${{ steps.snapshot.outputs.providers }}
+      head_sha: ${{ steps.snapshot.outputs.head_sha }}
+    steps:
+      - name: Checkout trusted main (never a pull request head)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }} # immutable workflow_dispatch commit on protected main
+          persist-credentials: false
+      - name: Verify open PR and create bounded immutable review snapshot
+        id: snapshot
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          PROVIDER: ${{ inputs.provider }}
+          PHASE: ${{ inputs.phase }}
+        run: >-
+          python3 scripts/agent_model_bridge.py scope
+          --pr "$PR_NUMBER"
+          --provider "$PROVIDER"
+          --phase "$PHASE"
+          --out "$RUNNER_TEMP/snapshot.json"
+          --github-output "$GITHUB_OUTPUT"
+      - name: Share snapshot with isolated read-only model jobs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agent-bridge-snapshot
+          path: ${{ runner.temp }}/snapshot.json
+          retention-days: 7
+          if-no-files-found: error
+
+  review:
+    name: review-${{ matrix.provider }}
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: ${{ fromJSON(needs.scope.outputs.providers) }}
+    environment:
+      name: agent-${{ matrix.provider }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted main only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }} # immutable workflow_dispatch commit on protected main
+          persist-credentials: false
+      - name: Download immutable snapshot
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: agent-bridge-snapshot
+          path: ${{ runner.temp }}/input
+      - name: Model reads PR diff as untrusted data; no GitHub write token
+        env:
+          AGENT_PROVIDER: ${{ matrix.provider }}
+          MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
+          MODEL_NAME: ${{ vars.MODEL_NAME }}
+          EXPECTED_SHA: ${{ needs.scope.outputs.head_sha }}
+        run: >-
+          python3 scripts/agent_model_bridge.py review
+          --provider "$AGENT_PROVIDER"
+          --snapshot "$RUNNER_TEMP/input/snapshot.json"
+          --expected-sha "$EXPECTED_SHA"
+          --out "$RUNNER_TEMP/review-${AGENT_PROVIDER}.json"
+      - name: Persist attributable model output
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agent-bridge-review-${{ matrix.provider }}
+          path: ${{ runner.temp }}/review-${{ matrix.provider }}.json
+          retention-days: 7
+          if-no-files-found: error
+
+  challenge:
+    name: challenge-${{ matrix.provider }}
+    if: inputs.phase == 'challenge'
+    needs: [scope, review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: ${{ fromJSON(needs.scope.outputs.providers) }}
+    environment:
+      name: agent-${{ matrix.provider }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted main only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }} # immutable workflow_dispatch commit on protected main
+          persist-credentials: false
+      - name: Retrieve same immutable PR snapshot
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: agent-bridge-snapshot
+          path: ${{ runner.temp }}/input
+      - name: Retrieve distinct model outputs for cross-examination
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: agent-bridge-review-*
+          path: ${{ runner.temp }}/peer-reviews
+          merge-multiple: true
+      - name: Challenge other providers' findings without adopting their identity
+        env:
+          AGENT_PROVIDER: ${{ matrix.provider }}
+          MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
+          MODEL_NAME: ${{ vars.MODEL_NAME }}
+          EXPECTED_SHA: ${{ needs.scope.outputs.head_sha }}
+        run: >-
+          python3 scripts/agent_model_bridge.py challenge
+          --provider "$AGENT_PROVIDER"
+          --snapshot "$RUNNER_TEMP/input/snapshot.json"
+          --expected-sha "$EXPECTED_SHA"
+          --peers "$RUNNER_TEMP/peer-reviews"
+          --out "$RUNNER_TEMP/challenge-${AGENT_PROVIDER}.json"
+      - name: Save attributable cross-model challenge output
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agent-bridge-challenge-${{ matrix.provider }}
+          path: ${{ runner.temp }}/challenge-${{ matrix.provider }}.json
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: publish-review-evidence-only
+    if: >-
+      always() && needs.scope.result == 'success' &&
+      needs.review.result == 'success' &&
+      (needs.challenge.result == 'success' || needs.challenge.result == 'skipped')
+    needs: [scope, review, challenge]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # No model-provider environments and NO MODEL_API_KEY in this job.
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    steps:
+      - name: Checkout trusted main only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }} # immutable workflow_dispatch commit on protected main
+          persist-credentials: false
+      - name: Retrieve original PR snapshot
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: agent-bridge-snapshot
+          path: ${{ runner.temp }}/snapshot
+      - name: Retrieve model outputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: agent-bridge-review-*
+          path: ${{ runner.temp }}/reviews
+          merge-multiple: true
+      - name: Retrieve challenge outputs if requested
+        if: inputs.phase == 'challenge'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: agent-bridge-challenge-*
+          path: ${{ runner.temp }}/challenges
+          merge-multiple: true
+      - name: Post evidence as one bounded PR comment, only if head is unchanged
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          EXPECTED_SHA: ${{ needs.scope.outputs.head_sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          PROVIDER: ${{ inputs.provider }}
+          PHASE: ${{ inputs.phase }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: >-
+          python3 scripts/agent_model_bridge.py publish
+          --pr "$PR_NUMBER"
+          --phase "$PHASE"
+          --expected-sha "$EXPECTED_SHA"
+          --snapshot "$RUNNER_TEMP/snapshot/snapshot.json"
+          --reviews "$RUNNER_TEMP/reviews"
+          --challenges "$RUNNER_TEMP/challenges"
+          --github-run "$GITHUB_RUN_ID"

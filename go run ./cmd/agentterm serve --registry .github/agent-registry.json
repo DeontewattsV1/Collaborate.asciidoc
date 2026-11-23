@@ -1,2 +1,0 @@
-go run ./cmd/agentterm serve --registry .github/agent-registry.json   # view at http://127.0.0.1:8787
-GITHUB_TOKEN=... agentterm clock-in --server http://127.0.0.1:8787 --instance <name> --branch claude/<work>
