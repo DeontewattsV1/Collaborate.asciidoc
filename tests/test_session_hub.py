@@ -37,7 +37,8 @@ class SessionTest(unittest.TestCase):
         active, unknown, digest = hub.reconcile(events, POLICY, BASE + timedelta(minutes=62))
         self.assertEqual(len(active), 1)
         self.assertEqual(active[0]['id'], 4)
-        self.assertEqual(active[0]['first_seen'], BASE)
+        # A leave followed by a new join begins a distinct episode.
+        self.assertEqual(active[0]['first_seen'], BASE + timedelta(minutes=61))
         self.assertFalse(unknown)
         self.assertEqual(digest, hub.reconcile(list(reversed(events)), POLICY,
                                                BASE + timedelta(minutes=62))[2])
