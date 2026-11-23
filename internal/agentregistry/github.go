@@ -62,7 +62,7 @@ func (c *GitHubClient) validate() error {
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "https" && !(parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "::1"))) {
 		return fmt.Errorf("GitHub API URL must be HTTPS (HTTP is allowed only for loopback tests)")
 	}
-	if parts := strings.Split(c.Repository, "/"); len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+	if strings.TrimSpace(c.Repository) == "" || strings.Count(c.Repository, "/") != 1 {
 		return fmt.Errorf("GITHUB_REPOSITORY must be owner/name")
 	}
 	if c.HTTPClient == nil {
@@ -113,10 +113,6 @@ func (c *GitHubClient) repoPath(suffix string) string {
 func (c *GitHubClient) listFiles(prNumber int) ([]string, error) {
 	if prNumber <= 0 {
 		return nil, fmt.Errorf("invalid pull request number")
-	}
-	// Validate before repoPath, which indexes the owner/name split.
-	if err := c.validate(); err != nil {
-		return nil, err
 	}
 	var paths []string
 	for page := 1; page <= maxGitHubPages; page++ {

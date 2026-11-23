@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"unicode/utf8"
 )
 
 const MaxRegistryBytes = 1 << 20
@@ -190,7 +189,7 @@ func (r *Registry) Validate() error {
 			return fmt.Errorf("duplicate agent_id %q", a.ID)
 		}
 		ids[a.ID] = true
-		if strings.TrimSpace(a.DisplayName) == "" || utf8.RuneCountInString(a.DisplayName) > 100 {
+		if strings.TrimSpace(a.DisplayName) == "" || len(a.DisplayName) > 100 {
 			return fmt.Errorf("%s.display_name must be non-empty and at most 100 characters", where)
 		}
 		switch a.Status {
@@ -214,7 +213,7 @@ func (r *Registry) Validate() error {
 			if identity.AccountType == "bot" {
 				pattern = botLoginPattern
 			}
-			if !pattern.MatchString(identity.Login) || identity.GitHubUserID <= 0 || identity.GitHubUserID > maxGitHubUserID {
+			if !pattern.MatchString(identity.Login) || identity.GitHubUserID <= 0 {
 				return fmt.Errorf("%s.github_identities[%d] has an invalid login or GitHub user ID", where, j)
 			}
 			key := fmt.Sprintf("%s:%d", identity.AccountType, identity.GitHubUserID)
@@ -256,16 +255,12 @@ func (r *Registry) Validate() error {
 	return nil
 }
 
-// maxGitHubUserID mirrors the schema's github_user_id maximum (2^53-1, the
-// largest integer JSON consumers represent exactly).
-const maxGitHubUserID = 1<<53 - 1
-
 func validBranchPrefix(prefix string) bool {
 	if len(prefix) < 2 || len(prefix) > 255 || !strings.HasSuffix(prefix, "/") || strings.Contains(prefix, "//") || strings.Contains(prefix, "..") || strings.Contains(prefix, "@{") || strings.ContainsAny(prefix, " ~^:?*[\\") {
 		return false
 	}
 	for _, segment := range strings.Split(strings.TrimSuffix(prefix, "/"), "/") {
-		if segment == "" || segment == "." || strings.HasPrefix(segment, ".") || strings.HasSuffix(segment, ".") || strings.HasSuffix(segment, ".lock") {
+		if segment == "" || segment == "." || strings.HasPrefix(segment, ".") || strings.HasSuffix(segment, ".lock") {
 			return false
 		}
 		for _, r := range segment {
