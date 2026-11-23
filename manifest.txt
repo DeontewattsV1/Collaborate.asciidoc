@@ -1,0 +1,15 @@
+# Collaborate.asciidoc Additive Agent Model Bridge
+Status: LOCAL BUNDLE ONLY; not committed or deployed to GitHub
+Created: 2026-11-23
+Source repository: https://github.com/DeontewattsV1/Collaborate.asciidoc
+Attribution: Deonté O'dell Watts; GoodShyt Group Inc.; AI-assisted implementation
+Trust: Existing agent hub / coordination unchanged; no new identity claims
+Verification: 14/14 mocked Python tests PASS; Python compile PASS; YAML parse PASS; actionlint NOT RUN (network unavailable); live GitHub and model API NOT RUN
+
+SHA-256  Relative path
+e3bc6daacdf9810324eb0622e4dfd2e14a8ca4e21b00f556307d62f4c4da71a9  .github/workflows/agent-model-bridge-tests.yml
+78b314141225e9f105bbe563e0e766355a4068e2a435fc270c587dc42ec94daf  .github/workflows/agent-model-bridge.yml
+0f5271a3a050e257c5a5db1c2bda3cc2d26e116f3e61b4dac5addd244a78459e  README.md
+82c8184cce22fe012d4975f43f34a1d35bdace18d64d234c2c7fe1b707da84b1  docs/AGENT-MODEL-BRIDGE.md
+df2252612d12f3a836a0f3b566aee399fae98ec94cd05e40e7bbb91dba49fcc8  scripts/agent_model_bridge.py
+52910b36f0ddf06909421715cce075b2d16a28b4f5560c621fd6912c823e49e3  tests/test_agent_model_bridge.py
