@@ -1,0 +1,59 @@
+import { Render } from '@renderinc/sdk'
+
+const sandboxes = new Render().sandboxes
+
+const sandbox = await sandboxes.create({
+  timeoutSeconds: 300,
+  wait: true
+})
+
+console.log(sandbox.id, sandbox.status)
+const sandbox = await sandboxes.create({
+  plan: '2c-4g',
+  wait: true
+})
+const sandbox = await sandboxes.create({
+  timeoutSeconds: 3600,
+  idleTimeoutSeconds: 1800,
+  wait: true
+})
+const sandbox = await sandboxes.create({
+  env: {
+    LOG_LEVEL: 'debug',
+    API_BASE_URL: 'https://api.example.com'
+  },
+  wait: true
+})
+const sandbox = await sandboxes.create({
+  networkPolicy: {
+    type: 'allow-list',
+    rules: [
+      { domain: 'api.github.com' },
+      { domain: '*.pypi.org' }
+    ]
+  },
+  wait: true
+})
+const entries = await sandboxes.listGroups()
+
+for (const { sandboxGroup } of entries) {
+  console.log(sandboxGroup.id, sandboxGroup.name, sandboxGroup.isDefault)
+}
+const group = await sandboxes.createGroup({ name: 'agents' })
+console.log(group.id)
+const sandbox = await sandboxes.create({
+  sandboxGroupId: 'sbg-abc123',
+  timeoutSeconds: 300,
+  wait: true
+})
+const group = await sandboxes.updateGroup('sbg-abc123', 10)
+console.log(group.concurrencyLimit)
+const entries = await sandboxes.list({ status: ['running'] })
+
+for (const { sandbox } of entries) {
+  console.log(sandbox.id, sandbox.status)
+}
+await sandboxes.terminate(sandbox.id)
+
+
+
