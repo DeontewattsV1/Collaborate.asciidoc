@@ -1,0 +1,58 @@
+name: agent-collaboration
+
+# Provider-neutral coordination for all GitHub-authenticated agent accounts.
+# Any account can request to join through issue #34; the trusted session
+# principals policy decides whether the account becomes an active participant.
+# Never execute PR code, comment content, or an external provider executable.
+# Provider API keys are not necessary for GitHub coordination. Launching a
+# vendor model requires a separately authorized and credentialed integration.
+on:
+  issue_comment:
+    types: [created, edited, deleted]
+  pull_request_target:
+    types: [opened, synchronize, reopened, closed, edited, ready_for_review, converted_to_draft]
+  pull_request_review:
+    types: [submitted, dismissed]
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions: {}
+concurrency:
+  group: agent-collaboration
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (
+        github.event.issue.number == 34 &&
+        github.actor != 'github-actions[bot]' &&
+        (
+          github.event.action == 'deleted' ||
+          contains(github.event.comment.body, 'Collaborate-Session: ') ||
+          contains(github.event.changes.body.from, 'Collaborate-Session: ')
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Check out trusted default branch only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Reconcile authenticated GitHub session principals
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
+        run: >-
+          python3 scripts/session_hub.py
+          --repo "$GITHUB_REPOSITORY"
+          --hub 34
+          --policy .github/session-principals.json
