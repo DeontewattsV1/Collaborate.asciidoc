@@ -14,9 +14,9 @@ It creates each GitHub Environment below and limits deployments to `main`. It fi
 
 | Environment | Secret (you type it) | Variables (pre-filled; change in Settings › Environments) | Used by |
 |---|---|---|---|
-| `agent-openai` | `MODEL_API_KEY` | `MODEL_NAME` = `gpt-6.1-sol` | `agent-model-bridge` |
+| `agent-openai` | `MODEL_API_KEY` | `MODEL_NAME` = `gpt-6.2-sol` | `agent-model-bridge` |
 | `agent-anthropic` | `MODEL_API_KEY` | `MODEL_NAME` = `claude-sonnet-5-5` | `agent-model-bridge` |
-| `agent-gemini` | `MODEL_API_KEY` | `MODEL_NAME` = `gemini-3.5-flash` | `agent-model-bridge` |
+| `agent-gemini` | `MODEL_API_KEY` | `MODEL_NAME` = `gemini-3.8-flash` | `agent-model-bridge` |
 | `agent-xai` | `MODEL_API_KEY` | `MODEL_NAME` = `grok-4.7` | `agent-model-bridge` |
 | `sandbox-opensandbox` | `OPEN_SANDBOX_API_KEY` | `OPEN_SANDBOX_DOMAIN` (your server's host[:port], asked once), `OPEN_SANDBOX_PROTOCOL` = `https` | `opensandbox-sandbox` |
 | `sandbox-render` | `RENDER_API_KEY` | `RENDER_SANDBOX_GROUP_ID` = `sbg-dc225m56e07s73envfrg` | `render-sandbox` |

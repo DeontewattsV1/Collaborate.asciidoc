@@ -85,8 +85,45 @@ class ProviderTests(unittest.TestCase):
             self.assertEqual(output, "NOT RUN")
             req = request.call_args[0][0]
             self.assertEqual(req.full_url, "https://api.openai.com/v1/chat/completions")
-            self.assertEqual(json.loads(req.data)["max_completion_tokens"], 1100)
+            self.assertEqual(json.loads(req.data)["max_completion_tokens"], bridge.TOKEN_BUDGET)
 
+
+    def test_reasoning_budget_exhaustion_is_reported_clearly(self):
+        cases = [
+            ("openai", {"choices": [{"message": {"content": ""}, "finish_reason": "length"}]}, "whole 8192-token budget"),
+            ("gemini", {"candidates": [{"content": {"parts": []}, "finishReason": "MAX_TOKENS"}]}, "used up by reasoning"),
+            ("gemini", {"candidates": [], "promptFeedback": {"blockReason": "SAFETY"}}, "blockReason=SAFETY"),
+            ("anthropic", {"content": [], "stop_reason": "max_tokens"}, "whole 8192-token budget"),
+        ]
+        for provider, response, want in cases:
+            with self.subTest(provider=provider, want=want), patch.object(bridge, "urlopen") as call:
+                call.return_value.__enter__.return_value.read.return_value = json.dumps(response).encode()
+                with self.assertRaisesRegex(ValueError, want):
+                    bridge.output_from_model(provider, "model-example", "system", "prompt", "test-key")
+
+    def test_gemini_payload_uses_header_key_and_budget(self):
+        with patch.object(bridge, "urlopen") as call:
+            call.return_value.__enter__.return_value.read.return_value = json.dumps(
+                {"candidates": [{"content": {"parts": [{"text": "ok"}]}, "finishReason": "STOP"}]}).encode()
+            self.assertEqual(bridge.output_from_model("gemini", "gemini-3.8-flash", "s", "p", "g-key"), "ok")
+            req = call.call_args[0][0]
+            self.assertEqual(req.full_url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent")
+            self.assertEqual(req.get_header("X-goog-api-key"), "g-key")
+            self.assertNotIn("g-key", req.full_url)
+            body = json.loads(req.data)
+            self.assertEqual(body["generationConfig"]["maxOutputTokens"], bridge.TOKEN_BUDGET)
+            self.assertEqual(body["systemInstruction"]["parts"][0]["text"], "s")
+
+    def test_openai_payload_uses_bearer_and_chat_roles(self):
+        with patch.object(bridge, "urlopen") as call:
+            call.return_value.__enter__.return_value.read.return_value = json.dumps(
+                {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}).encode()
+            bridge.output_from_model("openai", "gpt-6.2-sol", "s", "p", "o-key")
+            req = call.call_args[0][0]
+            self.assertEqual(req.get_header("Authorization"), "Bearer o-key")
+            body = json.loads(req.data)
+            self.assertEqual([m["role"] for m in body["messages"]], ["system", "user"])
+            self.assertNotIn("max_tokens", body)
 
     def test_provider_payloads_anthropic_gemini_xai(self):
         cases = [
