@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Terminal</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--fg:#e6edf3;--dim:#8b949e;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--acc:#58a6ff;--mag:#bc8cff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:14px;margin:0;font-weight:600}
+.pill{padding:1px 8px;border-radius:10px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.pill.ok{color:var(--ok);border-color:var(--ok)}.pill.bad{color:var(--bad);border-color:var(--bad)}.pill.warn{color:var(--warn);border-color:var(--warn)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 340px;height:calc(100% - 41px)}
+#term{overflow:auto;padding:8px 16px 40px}
+aside{border-left:1px solid var(--line);overflow:auto;background:var(--panel)}
+aside section{padding:10px 14px;border-bottom:1px solid var(--line)}
+aside h2{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin:0 0 6px}
+.row{display:grid;grid-template-columns:56px 74px minmax(0,1fr) 18px;gap:8px;padding:1px 0;align-items:start}
+.seq,.ts{color:var(--dim)}.who{color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg{white-space:pre-wrap;word-break:break-word}
+.v{font-size:11px;text-align:right}.v.ok{color:var(--ok)}.v.bad{color:var(--bad)}
+pre.out{margin:2px 0 4px;padding:6px 8px;background:#010409;border:1px solid var(--line);border-radius:4px;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto;color:#c9d1d9}
+.k-clock_in,.k-clock_out,.k-expire{color:var(--mag)}.k-exec_request,.k-record{color:var(--fg);font-weight:600}
+.k-claim,.k-release{color:var(--warn)}.k-commit{color:var(--ok)}.k-finding{color:var(--bad)}.k-finding_status{color:var(--acc)}.k-genesis{color:var(--dim)}
+.item{padding:3px 0;border-bottom:1px dashed #21262d}.item:last-child{border:0}
+.dim{color:var(--dim)}.exit0{color:var(--ok)}.exitN{color:var(--bad)}
+@media (max-width:820px){main{grid-template-columns:1fr;height:auto}aside{border-left:0;border-top:1px solid var(--line)}#term{max-height:65vh}.row{grid-template-columns:44px minmax(0,1fr) 16px}.ts{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#9608; Agent Terminal</h1>
+  <span id="conn" class="pill warn">connecting</span>
+  <span id="chain" class="pill">chain: &mdash;</span>
+  <span id="head" class="pill">head: &mdash;</span>
+  <span id="exec" class="pill">exec: &mdash;</span>
+</header>
+<main>
+  <div id="term" role="log" aria-live="polite"></div>
+  <aside>
+    <section><h2>Clocked in</h2><div id="roster" class="dim">nobody</div></section>
+    <section><h2>Claims</h2><div id="claims" class="dim">none</div></section>
+    <section><h2>Review findings</h2><div id="findings" class="dim">none</div></section>
+    <section class="dim">Read-only view. Agents act through the <code>agentterm</code> CLI with a GitHub-verified, per-session signing key. The terminal cannot push, merge or approve; work lands only through pull requests that pass CI.</section>
+  </aside>
+</main>
+<script>
+"use strict";
+const token = new URLSearchParams(location.search).get("token");
+const q = (p) => token ? p + (p.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : p;
+const term = document.getElementById("term");
+const $ = (id) => document.getElementById(id);
+let prevHash = null, verified = 0, broken = false, serverKey = null, edOK = true;
+const enc = new TextEncoder();
+const hex = (buf) => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+const unhex = (h) => new Uint8Array((h.match(/../g) || []).map(x => parseInt(x, 16)));
+
+function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+
+async function hashEntry(e) {
+  const input = ["agentterm/v1", e.seq, e.time, e.prev, e.kind, e.session, e.agent, e.nonce, e.agent_sig].join("\n") + "\n" + e.body;
+  return hex(await crypto.subtle.digest("SHA-256", enc.encode(input)));
+}
+async function verifySig(e) {
+  if (!serverKey || !edOK) return null;
+  try { return await crypto.subtle.verify("Ed25519", serverKey, unhex(e.server_sig), enc.encode(e.hash)); }
+  catch (_) { edOK = false; return null; }
+}
+
+function describe(e, b) {
+  const s7 = (x) => (x || "").slice(0, 7);
+  switch (e.kind) {
+    case "genesis": return ["terminal created · " + b.protocol];
+    case "clock_in": return ["▶ clocked in as instance " + b.instance + " on " + b.branch + "  (GitHub " + b.github_login + " #" + b.github_id + ")"];
+    case "clock_out": return ["■ clocked out"];
+    case "expire": return ["■ session expired (no heartbeat)"];
+    case "heartbeat": return ["♥ heartbeat"];
+    case "claim": return ["⚑ claimed " + b.paths.join(", ")];
+    case "release": return ["⚐ released " + b.paths.join(", ")];
+    case "exec_request": return ["$ " + b.argv.join(" ") + "   [server will run]"];
+    case "exec_result": return ["↳ exit " + b.exit + " in " + b.duration_ms + "ms · server-executed" + (b.error ? " · " + b.error : ""), (b.stdout || "") + (b.stderr ? (b.stdout ? "\n" : "") + b.stderr : ""), b.exit];
+    case "record": return ["$ " + b.argv.join(" ") + "   [self-reported" + (b.where ? " @ " + b.where : "") + ", exit " + b.exit + "]", b.output, b.exit];
+    case "commit": return ["● commit " + s7(b.sha) + " on " + b.branch + (b.pr ? " · PR #" + b.pr : "") + (b.paths ? " · " + b.paths.join(", ") : "")];
+    case "finding": return ["✱ [" + b.severity + "] PR #" + b.pr + " @" + s7(b.commit) + (b.path ? " " + b.path + (b.line ? ":" + b.line : "") : "") + " — " + b.text];
+    case "finding_status": return ["✓ finding #" + b.finding + " → " + b.status + (b.commit ? " @" + s7(b.commit) : "")];
+    case "note": return ["» " + b.text];
+  }
+  return [e.kind];
+}
+
+async function add(e) {
+  const h = await hashEntry(e);
+  const linkOK = prevHash === null ? e.seq === 0 && e.prev === "" : e.prev === prevHash;
+  const sig = await verifySig(e);
+  const ok = h === e.hash && linkOK && sig !== false;
+  if (!ok) broken = true; else verified++;
+  prevHash = e.hash;
+  let b = {}; try { b = JSON.parse(e.body); } catch (_) {}
+  const [text, out, exit] = describe(e, b);
+  const row = el("div", "row");
+  row.append(el("span", "seq", "#" + e.seq), el("span", "ts", e.time.slice(11, 19)), (() => {
+    const m = el("div");
+    const line = el("div", "msg k-" + e.kind);
+    if (e.agent) { line.append(el("span", "who", e.agent + " ")); }
+    line.append(document.createTextNode(text));
+    m.append(line);
+    if (out) { const p = el("pre", "out", out); if (exit != null) p.classList.add(exit === 0 ? "exit0" : "exitN"); m.append(p); }
+    return m;
+  })(), el("span", "v " + (ok ? "ok" : "bad"), ok ? (sig === null ? "#" : "✓") : "✗"));
+  row.title = "hash " + e.hash + (ok ? (sig === null ? "\nhash and link verified (Ed25519 unsupported in this browser)" : "\nhash, link and server signature verified") : "\nVERIFICATION FAILED");
+  const stick = term.scrollTop + term.clientHeight >= term.scrollHeight - 30;
+  term.append(row);
+  if (stick) term.scrollTop = term.scrollHeight;
+  $("chain").textContent = broken ? "chain: BROKEN" : "chain: " + verified + " verified";
+  $("chain").className = "pill " + (broken ? "bad" : "ok");
+  $("head").textContent = "head: " + e.hash.slice(0, 12);
+}
+
+let stateTimer = null;
+function refreshState() {
+  clearTimeout(stateTimer);
+  stateTimer = setTimeout(async () => {
+    const r = await fetch(q("/api/state")); if (!r.ok) return;
+    const s = await r.json();
+    const fill = (id, items, render, empty) => { const box = $(id); box.replaceChildren(); box.className = items.length ? "" : "dim"; if (!items.length) box.textContent = empty; items.forEach(i => box.append(render(i))); };
+    fill("roster", (s.sessions || []).filter(x => x.open), x => { const d = el("div", "item"); d.append(el("span", "who", x.agent + "/" + x.instance), el("div", "dim", x.branch + " · seen " + x.last_seen.slice(11, 19) + "Z")); return d; }, "nobody");
+    fill("claims", s.claims || [], c => { const d = el("div", "item"); d.append(el("div", "k-claim", c.path), el("div", "dim", c.agent + "/" + c.instance + " · #" + c.seq)); return d; }, "none");
+    fill("findings", s.findings || [], f => { const d = el("div", "item"); d.append(el("div", "k-finding", "#" + f.seq + " [" + f.severity + "] PR #" + f.pr + " · " + f.status), el("div", "", f.text), el("div", "dim", "by " + f.by + " @" + f.commit.slice(0, 7) + (f.fixed_in ? " · fixed in " + f.fixed_in.slice(0, 7) : ""))); return d; }, "none");
+  }, 150);
+}
+
+(async () => {
+  const info = await (await fetch(q("/api/info"))).json();
+  $("exec").textContent = "exec: " + (info.exec ? "allowlisted" : "off (record only)");
+  try { serverKey = await crypto.subtle.importKey("raw", unhex(info.server_key), { name: "Ed25519" }, false, ["verify"]); } catch (_) { edOK = false; }
+  // Replay from genesis so the whole chain is verified here; EventSource
+  // resumes from Last-Event-ID on reconnect, so a dropped link loses nothing.
+  const es = new EventSource(q("/api/stream?since=-1"));
+  let chain = Promise.resolve();
+  es.addEventListener("entry", (ev) => { chain = chain.then(() => add(JSON.parse(ev.data))).then(refreshState); });
+  es.onopen = () => { $("conn").textContent = "live"; $("conn").className = "pill ok"; };
+  es.onerror = () => { $("conn").textContent = "reconnecting…"; $("conn").className = "pill warn"; };
+  refreshState();
+})();
+</script>
+</body>
+</html>

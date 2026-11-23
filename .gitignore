@@ -6,3 +6,4 @@ bin/
 *.sqlite-wal
 __pycache__/
 *.py[cod]
+.agentterm/

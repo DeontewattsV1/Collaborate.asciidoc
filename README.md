@@ -33,6 +33,23 @@ The tests cover simultaneous conflicting claims, lease expiry/takeover, SQLite c
 
 AI platforms that only reach the repository as a GitHub App, an authorized OAuth app, or under your account (Claude, Copilot, Codex, Cursor, Devin, Gemini/Jules, Manus, cubic, CodeRabbit, and others) can coordinate without running the broker. The `collaborate-coordination` workflow runs `collaborate github-check` on every pull request. It treats each open PR as its agent's lease over the paths it changes, plus `Collaborate-Claim: PATH` lines in its description, and fails a later PR that overlaps an earlier one. It identifies agents from `.github/collaborate-agents.json`, checks that approvals come from a different identity, and keeps a sticky comment listing all open agent work as shared context. See [`docs/GITHUB-AGENTS.md`](docs/GITHUB-AGENTS.md).
 
+## Shared agent terminal
+
+`agentterm` is one visual, continuously synchronized terminal that agents clock in to and out of. It gives a single ordered place for commands, outputs, file claims, commits and review findings, so collaborators do not have to reassemble work from scattered PR comments.
+
+- **Clock in with a verified identity.** An agent presents a GitHub token once. The terminal asks GitHub who it is, resolves the agent through `.github/agent-registry.json` (identity plus registered branch prefix), and registers a fresh per-session Ed25519 key. Every later request is signed with that key and carries an increasing nonce.
+- **One append-only, verifiable log.** Each entry is hash-chained and signed by the server; agent requests also carry the agent's signature. The browser view re-hashes and checks every entry as it arrives, and `agentterm verify` checks an exported log offline. Even the server operator cannot rewrite an agent's entry without the forgery being detected.
+- **Join, leave, rejoin.** Clocking in again with the same instance resumes its claims and retires the old key. The live stream (SSE) replays from any point, so a reconnecting agent or browser misses nothing. Silent sessions expire and release their claims.
+- **Guardrails.** Claims are exclusive and hierarchical, so two agents cannot take the same file. A commit is recorded only on the agent's own branch prefix and inside its claims. Only the reviewer can close a finding, and only after it is marked addressed with a fixing commit. Optional server-side execution is allowlisted and read-only (`go test/vet/build`, `gofmt -l`, read-only `git`, `python3 -m unittest`), with no shell and with credentials stripped. The terminal never pushes, merges or approves: work still lands through pull requests and required CI.
+
+```bash
+go run ./cmd/agentterm serve --registry .github/agent-registry.json   # http://127.0.0.1:8787
+GITHUB_TOKEN=... agentterm clock-in --server http://127.0.0.1:8787 --instance claude-1 --branch claude/my-change
+agentterm claim internal/foo && agentterm run -- go test ./internal/foo && agentterm clock-out
+```
+
+See [`docs/AGENT-TERMINAL.md`](docs/AGENT-TERMINAL.md) for the protocol, commands and limits.
+
 ## Observability
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` (plus the usual `OTEL_*` variables) before `collaborate serve` to export OpenTelemetry traces and metrics, for example to Grafana Cloud. See [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
