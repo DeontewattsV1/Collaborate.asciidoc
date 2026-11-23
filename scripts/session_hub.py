@@ -111,7 +111,10 @@ def reconcile(comments: list[dict], policy: dict[int, dict], now: datetime) -> t
             # A repeated join while still live retains the current episode start.
             started = (prev["first_seen"] if prev and e["when"] <= prev["last_seen"] + TTL
                        else e["when"])
-            active[key] = {**e, "first_seen": started, "last_seen": e["when"]}
+            # The role field is optional on the wire, but rendering needs a label.
+            # Preserve the original event in the digest; this is display-only.
+            claim = {**e["event"], "role": e["event"].get("role", "unknown")}
+            active[key] = {**e, "event": claim, "first_seen": started, "last_seen": e["when"]}
         elif event_type == "heartbeat" and prev and e["when"] <= prev["last_seen"] + TTL:
             # Heartbeat certifies only continued presence of this GitHub principal.
             # It cannot rewrite the role, PR or head claimed by the latest join.
@@ -130,6 +133,33 @@ def reconcile(comments: list[dict], policy: dict[int, dict], now: datetime) -> t
     return participants, unrecognized, digest
 
 
+def verify_claim(event: dict, prs: list[dict]) -> str | None:
+    """Compare an agent's PR/head assertion with the retrieved live open PRs.
+
+    A matching SHA confirms only that the asserted commit is the current head;
+    it does not establish CI success, authorship, approval or agent identity.
+    """
+    number = event.get("pr")
+    if number is None:
+        return None
+    pr = next((p for p in prs if p.get("number") == number), None)
+    if pr is None:
+        return "not-open"
+    head = event.get("head")
+    if head is None:
+        return "unasserted"
+    current = (pr.get("head") or {}).get("sha")
+    return "current" if current and head == current else "stale"
+
+
+CLAIM_LABELS = {
+    "current": "asserted head matches live PR (CI not assessed)",
+    "stale": "asserted head differs from live PR",
+    "not-open": "not among current open PRs",
+    "unasserted": "no commit head asserted",
+}
+
+
 def render(participants: list[dict], unrecognized: list[dict], digest: str, prs: list[dict], repo: str) -> str:
     lines = [MARKER, "## Collaboration session — GitHub-verified account principals", "",
              f"**Active instances:** {len(participants)} · **event snapshot SHA-256:** `{digest}`", "",
@@ -142,6 +172,9 @@ def render(participants: list[dict], unrecognized: list[dict], digest: str, prs:
         bound = f"#{data['pr']}" if data.get("pr") else "—"
         if data.get("head"):
             bound += f" / `{data['head'][:12]}`"
+        claim_status = verify_claim(data, prs)
+        if claim_status:
+            bound += f" ({CLAIM_LABELS[claim_status]})"
         lines.append(f"| `{clean(p['login'])}` (ID {p['actor_id']}; {clean(p['principal']['label'])}) | "
                      f"{clean(data['role'])} | `{clean(data['instance'])}` | {p['last_seen'].isoformat()} | {bound} |")
     if not participants:
