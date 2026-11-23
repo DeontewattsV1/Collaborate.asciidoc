@@ -1,0 +1,60 @@
+name: render-sandbox
+
+# Manually launches a short-lived Render sandbox, prints its id and status,
+# then terminates it (unless "keep" is ticked).
+#
+# Setup (once): run scripts/setup_github_environments.sh, or in
+# Settings > Environments > sandbox-render add
+#   secret   RENDER_API_KEY
+#   variable RENDER_SANDBOX_GROUP_ID  (optional, e.g. sbg-...)
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan:
+        description: Render sandbox plan (blank for default)
+        required: false
+        default: ''
+      timeoutSeconds:
+        description: Sandbox timeout in seconds
+        required: false
+        default: '300'
+      keep:
+        description: Leave the sandbox running instead of terminating it
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox:
+    if: github.ref == 'refs/heads/main' && github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: sandbox-render
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Install Render SDK
+        working-directory: scripts/sandbox
+        run: npm install --no-save --no-audit --no-fund @renderinc/sdk
+      - name: Launch sandbox
+        working-directory: scripts/sandbox
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SANDBOX_GROUP_ID: ${{ vars.RENDER_SANDBOX_GROUP_ID }}
+          SANDBOX_PLAN: ${{ inputs.plan }}
+          SANDBOX_TIMEOUT_SECONDS: ${{ inputs.timeoutSeconds }}
+          SANDBOX_KEEP: ${{ inputs.keep }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::Add the RENDER_API_KEY secret to the sandbox-render environment (scripts/setup_github_environments.sh does this)."
+            exit 1
+          fi
+          node render-sandbox.mjs

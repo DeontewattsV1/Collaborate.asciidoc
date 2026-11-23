@@ -2,14 +2,13 @@
   "$schema": "./agent-registry.schema.json",
   "schema_version": 1,
   "agents": [
-    {"agent_id": "manus", "display_name": "Manus", "status": "active", "github_identities": [{"account_type": "user", "login": "DeontewattsV1", "github_user_id": 284501602}], "branch_prefixes": ["manus/"], "allowed_tools": []},
-    {"agent_id": "claude", "display_name": "Claude", "status": "active", "github_identities": [{"account_type": "user", "login": "DeontewattsV1", "github_user_id": 284501602}], "branch_prefixes": ["claude/"], "allowed_tools": []},
+    {"agent_id": "manus", "display_name": "Manus", "status": "unconfigured", "branch_prefixes": ["manus/"], "allowed_tools": []},
+    {"agent_id": "claude", "display_name": "Claude", "status": "unconfigured", "branch_prefixes": ["claude/"], "allowed_tools": []},
     {"agent_id": "chatgpt", "display_name": "ChatGPT", "status": "unconfigured", "branch_prefixes": ["chatgpt/"], "allowed_tools": []},
     {"agent_id": "copilot", "display_name": "GitHub Copilot", "status": "unconfigured", "branch_prefixes": ["copilot/"], "allowed_tools": []},
-    {"agent_id": "codex", "display_name": "OpenAI Codex", "status": "active", "github_identities": [{"account_type": "user", "login": "DeontewattsV1", "github_user_id": 284501602}], "branch_prefixes": ["codex/"], "allowed_tools": []},
+    {"agent_id": "codex", "display_name": "OpenAI Codex", "status": "unconfigured", "branch_prefixes": ["codex/"], "allowed_tools": []},
     {"agent_id": "cursor", "display_name": "Cursor", "status": "unconfigured", "branch_prefixes": ["cursor/"], "allowed_tools": []},
     {"agent_id": "gemini-cli", "display_name": "Gemini CLI", "status": "unconfigured", "branch_prefixes": ["gemini/"], "allowed_tools": []},
-    {"agent_id": "windsurf", "display_name": "Windsurf", "status": "unconfigured", "branch_prefixes": ["windsurf/"], "allowed_tools": []},
-    {"agent_id": "dependabot", "display_name": "Dependabot", "status": "active", "github_identities": [{"account_type": "bot", "login": "dependabot[bot]", "github_user_id": 49699333}], "branch_prefixes": ["dependabot/"], "allowed_tools": []}
+    {"agent_id": "windsurf", "display_name": "Windsurf", "status": "unconfigured", "branch_prefixes": ["windsurf/"], "allowed_tools": []}
   ]
 }

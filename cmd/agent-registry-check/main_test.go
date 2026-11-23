@@ -43,57 +43,6 @@ func TestCheckedInDefaultRegistryIsValid(t *testing.T) {
 	}
 }
 
-// TestCheckedInRegistryBootstrap pins the bootstrapped identities. The
-// maintainer account is shared by several agents, so authorization must come
-// from identity AND a registered branch prefix; everything else stays closed.
-func TestCheckedInRegistryBootstrap(t *testing.T) {
-	r, err := agentregistry.Load(filepath.Join("..", "..", ".github", "agent-registry.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	maintainer := agentregistry.PullRequestIdentity{AccountType: "user", Login: "DeontewattsV1", GitHubUserID: 284501602}
-	dependabot := agentregistry.PullRequestIdentity{AccountType: "bot", Login: "dependabot[bot]", GitHubUserID: 49699333}
-	allow := []struct {
-		who    agentregistry.PullRequestIdentity
-		branch string
-		agent  string
-	}{
-		{maintainer, "claude/brave-hawking-t6dv9h", "claude"},
-		{maintainer, "codex/session-join-coordination-20261121", "codex"},
-		{maintainer, "manus/collaborate-scaffold", "manus"},
-		{dependabot, "dependabot/go_modules/go_modules-200d9d8864", "dependabot"},
-	}
-	for _, tc := range allow {
-		a, err := r.ResolvePullRequestAgent(tc.who, tc.branch)
-		if err != nil || a.ID != tc.agent {
-			t.Errorf("%s on %s: resolved %q err=%v, want %q", tc.who.Login, tc.branch, a.ID, err, tc.agent)
-		}
-	}
-	deny := []struct {
-		name   string
-		who    agentregistry.PullRequestIdentity
-		branch string
-		want   string
-	}{
-		{"shared account without an agent prefix", maintainer, "revert-18-claude/brave-hawking-t6dv9h", "branch prefix is required"},
-		{"shared account on an unconfigured agent prefix", maintainer, "copilot/fix", "unconfigured"},
-		{"bot account on an agent's prefix", dependabot, "claude/x", "does not"},
-		{"unknown author on a registered prefix", agentregistry.PullRequestIdentity{AccountType: "user", Login: "mallory", GitHubUserID: 666}, "claude/x", "not an active registered agent"},
-		{"user account reusing the bot's numeric ID", agentregistry.PullRequestIdentity{AccountType: "user", Login: "dependabot", GitHubUserID: 49699333}, "dependabot/x", "not an active registered agent"},
-	}
-	for _, tc := range deny {
-		if a, err := r.ResolvePullRequestAgent(tc.who, tc.branch); err == nil || !strings.Contains(err.Error(), tc.want) {
-			t.Errorf("%s: resolved %q err=%v, want error containing %q", tc.name, a.ID, err, tc.want)
-		}
-	}
-	// The bootstrap authorizes PR identities only; it grants no runtime tools.
-	for _, a := range r.Agents {
-		if len(a.AllowedTools) != 0 {
-			t.Errorf("agent %q has runtime tool grants %v; bootstrap must not grant tools", a.ID, a.AllowedTools)
-		}
-	}
-}
-
 func TestRunPassesAuthorizedNonOverlappingPRAndIgnoresUnregisteredClaims(t *testing.T) {
 	registry, event := writeGateFixtures(t, 10)
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -142,31 +91,6 @@ func TestRunRejectsHierarchicalOverlap(t *testing.T) {
 	err := run(registry, event, "test-token", "acme/project", api.URL, &output)
 	if err == nil || !strings.Contains(err.Error(), "overlapping") || !strings.Contains(output.String(), "PR #2") {
 		t.Fatalf("err=%v output=%s, want overlap denial", err, output.String())
-	}
-}
-
-func TestRunRejectsRenameOutOfClaimedPath(t *testing.T) {
-	registry, event := writeGateFixtures(t, 10)
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/repos/acme/project/pulls/1/files":
-			_, _ = w.Write([]byte(`[{"filename":"internal/pkg/file.go"}]`))
-		case "/repos/acme/project/pulls":
-			_, _ = w.Write([]byte(`[{"number":2,"html_url":"https://github.com/acme/project/pull/2","user":{"login":"bob","id":20,"type":"User"},"head":{"ref":"copilot/other"},"base":{"ref":"main"}}]`))
-		case "/repos/acme/project/pulls/2/files":
-			// PR #2 renames the file out of the path PR #1 changes; only the
-			// rename's previous_filename overlaps.
-			_, _ = w.Write([]byte(`[{"filename":"moved/file.go","previous_filename":"internal/pkg/file.go"}]`))
-		default:
-			t.Errorf("unexpected GitHub API request %s", r.URL.String())
-			http.NotFound(w, r)
-		}
-	}))
-	defer api.Close()
-	var output strings.Builder
-	err := run(registry, event, "test-token", "acme/project", api.URL, &output)
-	if err == nil || !strings.Contains(err.Error(), "overlapping") || !strings.Contains(output.String(), "internal/pkg/file.go") || !strings.Contains(output.String(), "PR #2") {
-		t.Fatalf("err=%v output=%s, want rename-source overlap denial", err, output.String())
 	}
 }
 

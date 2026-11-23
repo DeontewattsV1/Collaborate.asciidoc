@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "box": {
+      "type": "http",
+      "url": "https://mcp.box.simular.ai/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SIMULAR_BOX_API_KEY}"
+      }
+    },
+    "opensandbox-sandbox": {
+      "type": "stdio",
+      "command": "opensandbox-mcp",
+      "args": [],
+      "env": {
+        "OPEN_SANDBOX_API_KEY": "${OPEN_SANDBOX_API_KEY}",
+        "OPEN_SANDBOX_DOMAIN": "${OPEN_SANDBOX_DOMAIN}"
+      }
+    }
+  }
+}
