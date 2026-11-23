@@ -92,7 +92,6 @@ def reconcile(comments: list[dict], policy: dict[int, dict], now: datetime) -> t
     events = [e for c in comments if (e := parse_event(c)) is not None]
     events.sort(key=lambda e: (e["when"], e["id"]))
     active: dict[tuple[int, str], dict] = {}
-    first_seen: dict[tuple[int, str], datetime] = {}
     unrecognized = []
     accepted = []
     for e in events:
@@ -108,9 +107,15 @@ def reconcile(comments: list[dict], policy: dict[int, dict], now: datetime) -> t
         event_type = e["event"]["action"]
         prev = active.get(key)
         if event_type == "join":
-            active[key] = {**e, "first_seen": first_seen.setdefault(key, e["when"]), "last_seen": e["when"]}
+            # A new join after leave or expiry starts a new continuous episode.
+            # A repeated join while still live retains the current episode start.
+            started = (prev["first_seen"] if prev and e["when"] <= prev["last_seen"] + TTL
+                       else e["when"])
+            active[key] = {**e, "first_seen": started, "last_seen": e["when"]}
         elif event_type == "heartbeat" and prev and e["when"] <= prev["last_seen"] + TTL:
-            active[key] = {**prev, "last_seen": e["when"], "id": e["id"], "event": e["event"]}
+            # Heartbeat certifies only continued presence of this GitHub principal.
+            # It cannot rewrite the role, PR or head claimed by the latest join.
+            active[key] = {**prev, "last_seen": e["when"], "id": e["id"]}
         elif event_type == "leave":
             active.pop(key, None)
     participants = []
