@@ -1,0 +1,86 @@
+- name: sandbox-launch-action
+  # You may pin to the exact commit or the version.
+  # uses: crafting-dev/sandbox-launch-action@ca4ae80a848287f845072e5d03563a856d91632f
+  uses: crafting-dev/sandbox-launch-action@v0.5.3
+  with:
+    # the base url of the sandbox
+    baseUrl: # default is https://sandboxes.cloud
+    # name of the template for target sandbox.
+    template: 
+    # name of the auto launch sandbox. If not specified, a default name like <REPO>-pr-<PR-NUMBER> would be used.
+    name: # optional
+    # If true, the sandbox would not be launched automatically. Default to false, which means the sandbox is automatically launched.
+    manual: # optional
+    # Whether to follow the PR branch and automatically update the workspace(s).
+    mode: # optional, default is auto
+    # Comma-separated string workspace:path,...
+    checkouts: 
+    # Comma-separated workspace. All these workspaces would be in auto mode
+    autoFollow: # optional
+    # Comma-separated string name:snapshot,...
+    depSnapshots: # optional
+    # Comma-separated string name:snapshot,...
+    containerSnapshots: # optional
+    # Common-separated Github Action environment variable names.
+    envVars: # optional
+    # If the built-in inputs could not meet the requirement, raw query parameters could be provided
+    extraQueries: # optional
+import { Render } from '@renderinc/sdk'
+
+const sandboxes = new Render().sandboxes
+
+const sandbox = await sandboxes.create({
+  timeoutSeconds: 300,
+  wait: true
+})
+
+console.log(sandbox.id, sandbox.status)
+const sandbox = await sandboxes.create({
+  plan: '2c-4g',
+  wait: true
+})
+const sandbox = await sandboxes.create({
+  timeoutSeconds: 3600,
+  idleTimeoutSeconds: 1800,
+  wait: true
+})
+const sandbox = await sandboxes.create({
+  env: {
+    LOG_LEVEL: 'debug',
+    API_BASE_URL: 'https://api.example.com'
+  },
+  wait: true
+})
+const sandbox = await sandboxes.create({
+  networkPolicy: {
+    type: 'allow-list',
+    rules: [
+      { domain: 'api.github.com' },
+      { domain: '*.pypi.org' }
+    ]
+  },
+  wait: true
+})
+const entries = await sandboxes.listGroups()
+
+for (const { sandboxGroup } of entries) {
+  console.log(sandboxGroup.id, sandboxGroup.name, sandboxGroup.isDefault)
+}
+const group = await sandboxes.createGroup({ name: 'agents' })
+console.log(group.id)
+const sandbox = await sandboxes.create({
+  sandboxGroupId: 'sbg-abc123',
+  timeoutSeconds: 300,
+  wait: true
+})
+const group = await sandboxes.updateGroup('sbg-abc123', 10)
+console.log(group.concurrencyLimit)
+const entries = await sandboxes.list({ status: ['running'] })
+
+for (const { sandbox } of entries) {
+  console.log(sandbox.id, sandbox.status)
+}
+await sandboxes.terminate(sandbox.id)
+
+
+
