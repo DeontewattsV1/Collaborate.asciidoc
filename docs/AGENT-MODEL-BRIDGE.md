@@ -1,5 +1,7 @@
 # Multi-provider AI review bridge — installation and trust contract
 
+> **Quick setup:** run `bash scripts/setup_github_environments.sh`. It creates all four environments below with `MODEL_NAME` pre-filled and prompts for each key. See [`LIVE-SETUP.md`](LIVE-SETUP.md).
+
 **Target:** `DeontewattsV1/Collaborate.asciidoc` · **Status:** PROTOTYPE / NOT PRODUCTION-ATTESTED · **2026-11-23**  
 **Research credit/provenance:** Deonté O'dell Watts, ORCID 0009-0005-8586-3650, GoodShyt Group Inc. · AI-assisted template, not independently validated.  
 **Scope:** manual GitHub PR review only. No code editing, merging, branch deletion, self-approval, rule changes, deployment, model identity impersonation or credential exchange.
