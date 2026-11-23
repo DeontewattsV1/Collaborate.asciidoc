@@ -1,0 +1,48 @@
+name: render-sandbox
+
+# Manually launches a short-lived Render sandbox, prints its id and status,
+# then terminates it. Requires the RENDER_API_KEY repository secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan:
+        description: Render sandbox plan (blank for default)
+        required: false
+        default: ''
+      timeoutSeconds:
+        description: Sandbox timeout in seconds
+        required: false
+        default: '300'
+      keep:
+        description: Leave the sandbox running instead of terminating it
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Render SDK
+        working-directory: scripts/sandbox
+        run: npm install --no-save --no-audit --no-fund @renderinc/sdk
+      - name: Launch sandbox
+        working-directory: scripts/sandbox
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SANDBOX_PLAN: ${{ inputs.plan }}
+          SANDBOX_TIMEOUT_SECONDS: ${{ inputs.timeoutSeconds }}
+          SANDBOX_KEEP: ${{ inputs.keep }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::Set the RENDER_API_KEY repository secret first."
+            exit 1
+          fi
+          node render-sandbox.mjs
