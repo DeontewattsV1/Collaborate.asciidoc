@@ -80,6 +80,49 @@ class SessionTest(unittest.TestCase):
         events = [mkcomment(1, 'join'), mkcomment(2, 'join', user_id=11, login='person', typ='User')]
         self.assertEqual(len(hub.reconcile(events, POLICY, BASE)[0]), 2)
 
+    def test_role_is_pinned_at_join(self):
+        # Several agents share one human account, so a later event on the same
+        # (principal, instance) must not relabel or end another role's session.
+        joined = mkcomment(1, 'join', user_id=11, login='person', typ='User', role='claude-code')
+        relabel = mkcomment(2, 'heartbeat', minutes=30, user_id=11, login='person', typ='User', role='codex')
+        active, _, _ = hub.reconcile([joined, relabel], POLICY, BASE + timedelta(minutes=31))
+        self.assertEqual(active[0]['event']['role'], 'claude-code')
+        self.assertEqual(active[0]['last_seen'], BASE)  # mismatched heartbeat is not accepted
+        foreign_leave = mkcomment(3, 'leave', minutes=31, user_id=11, login='person', typ='User', role='codex')
+        active, _, _ = hub.reconcile([joined, foreign_leave], POLICY, BASE + timedelta(minutes=32))
+        self.assertEqual(len(active), 1, 'a leave declaring another role must not end the session')
+
+    def test_role_may_be_omitted_after_join(self):
+        joined = mkcomment(1, 'join', role='claude-code')
+        beat = mkcomment(2, 'heartbeat', minutes=30)
+        beat['body'] = hub.COMMAND + json.dumps({'v': 1, 'action': 'heartbeat', 'instance': 'run-1', 'pr': 21})
+        active, _, _ = hub.reconcile([joined, beat], POLICY, BASE + timedelta(minutes=31))
+        self.assertEqual(active[0]['event']['role'], 'claude-code')
+        self.assertEqual(active[0]['event']['pr'], 21)
+        self.assertEqual(active[0]['last_seen'], BASE + timedelta(minutes=30))
+        leave = mkcomment(3, 'leave', minutes=40)
+        leave['body'] = hub.COMMAND + json.dumps({'v': 1, 'action': 'leave', 'instance': 'run-1'})
+        self.assertEqual(hub.reconcile([joined, beat, leave], POLICY, BASE + timedelta(minutes=41))[0], [])
+
+    def test_head_assertions_are_checked_against_github(self):
+        def claim(n, pr, head):
+            c = mkcomment(n, 'join', instance=f'run-{n}', pr=pr)
+            c['body'] = hub.COMMAND + json.dumps({'v': 1, 'action': 'join', 'instance': f'run-{n}',
+                                                  'role': 'claude', 'pr': pr, 'head': head})
+            return c
+        live = 'a' * 40
+        prs = [{'number': 20, 'title': 'work', 'head': {'sha': live}, 'base': {'ref': 'main'}, 'draft': False}]
+        events = [claim(1, 20, live), claim(2, 20, 'b' * 40), claim(3, 99, live)]
+        active, _, digest = hub.reconcile(events, POLICY, BASE)
+        rows = {p['event']['instance']: p for p in active}
+        self.assertEqual(hub.verify_claim(rows['run-1']['event'], prs), 'current')
+        self.assertEqual(hub.verify_claim(rows['run-2']['event'], prs), 'stale')
+        self.assertEqual(hub.verify_claim(rows['run-3']['event'], prs), 'not-open')
+        body = hub.render(active, [], digest, prs, 'org/repo')
+        self.assertIn('matches current PR head', body)
+        self.assertIn('does not match current PR head', body)
+        self.assertIn('not an open PR', body)
+
     def test_upsert_idempotence(self):
         client = object.__new__(hub.GitHub)
         client.request = Mock()

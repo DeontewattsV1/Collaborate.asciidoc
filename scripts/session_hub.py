@@ -103,16 +103,27 @@ def reconcile(comments: list[dict], policy: dict[int, dict], now: datetime) -> t
             if e["event"]["action"] == "join":
                 unrecognized.append(e)
             continue
-        accepted.append(e)
         key = (e["actor_id"], e["event"]["instance"])
         event_type = e["event"]["action"]
         prev = active.get(key)
         if event_type == "join":
-            active[key] = {**e, "first_seen": first_seen.setdefault(key, e["when"]), "last_seen": e["when"]}
-        elif event_type == "heartbeat" and prev and e["when"] <= prev["last_seen"] + TTL:
-            active[key] = {**prev, "last_seen": e["when"], "id": e["id"], "event": e["event"]}
+            event = {**e["event"], "role": e["event"].get("role", "unknown")}
+            active[key] = {**e, "event": event, "first_seen": first_seen.setdefault(key, e["when"]),
+                           "last_seen": e["when"]}
+            accepted.append(e)
+            continue
+        # The role is pinned at join. Several agents can share one GitHub
+        # account, so a heartbeat or leave that names a different role must not
+        # relabel or end another role's instance. Omitting the role keeps it.
+        if not prev or e["event"].get("role", prev["event"]["role"]) != prev["event"]["role"]:
+            continue
+        if event_type == "heartbeat" and e["when"] <= prev["last_seen"] + TTL:
+            event = {**prev["event"], **e["event"], "role": prev["event"]["role"]}
+            active[key] = {**prev, "last_seen": e["when"], "id": e["id"], "event": event}
+            accepted.append(e)
         elif event_type == "leave":
             active.pop(key, None)
+            accepted.append(e)
     participants = []
     for p in active.values():
         if now <= p["last_seen"] + TTL:
@@ -123,6 +134,33 @@ def reconcile(comments: list[dict], policy: dict[int, dict], now: datetime) -> t
                      when=e["when"].isoformat(), event=e["event"]) for e in accepted]
     digest = hashlib.sha256(json.dumps(attested, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return participants, unrecognized, digest
+
+
+def verify_claim(event: dict, prs: list[dict]) -> str | None:
+    """Check a PR/head claim against live GitHub PR data.
+
+    Returns "current" when the asserted head is the PR's head now, "stale" when
+    it is not (the PR moved on or the SHA was never its head), "not-open" when
+    the PR is not open, "unasserted" when a PR is named without a head, and
+    None when no PR is claimed.
+    """
+    number = event.get("pr")
+    if number is None:
+        return None
+    live = next((p for p in prs if p.get("number") == number), None)
+    if live is None:
+        return "not-open"
+    if not event.get("head"):
+        return "unasserted"
+    return "current" if live["head"]["sha"] == event["head"] else "stale"
+
+
+CLAIM_TEXT = {
+    "current": "✅ matches current PR head",
+    "stale": "⚠️ does not match current PR head",
+    "not-open": "⚠️ not an open PR",
+    "unasserted": "no head asserted",
+}
 
 
 def render(participants: list[dict], unrecognized: list[dict], digest: str, prs: list[dict], repo: str) -> str:
@@ -137,6 +175,9 @@ def render(participants: list[dict], unrecognized: list[dict], digest: str, prs:
         bound = f"#{data['pr']}" if data.get("pr") else "—"
         if data.get("head"):
             bound += f" / `{data['head'][:12]}`"
+        status = verify_claim(data, prs)
+        if status:
+            bound += f" ({CLAIM_TEXT[status]})"
         lines.append(f"| `{clean(p['login'])}` (ID {p['actor_id']}; {clean(p['principal']['label'])}) | "
                      f"{clean(data['role'])} | `{clean(data['instance'])}` | {p['last_seen'].isoformat()} | {bound} |")
     if not participants:
