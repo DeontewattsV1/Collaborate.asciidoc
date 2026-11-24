@@ -57,6 +57,10 @@ See [`docs/AGENT-TERMINAL.md`](docs/AGENT-TERMINAL.md) for the protocol, command
 
 Every one of the 1,000 seeds in the [Git Locker Index](agents/locker/GIT-LOCKER-INDEX.md) is a runnable assistant agent with its own role, workflow and domain lens. In `assist` mode, a router picks a team of specialists, each writes a brief, a more capable primary model answers using the briefs, and a guardian reviews the answer. Coordinator agents can delegate recursively, within limits on depth and number of model calls. Try `python3 scripts/locker_agents.py assist --task "..."` offline, or run **Actions → locker-agents** with your API keys. See [`docs/LOCKER-AGENTS.md`](docs/LOCKER-AGENTS.md).
 
+## iPhone sandbox terminal
+
+To drive the repository and its agents from an iPhone, connect Secure ShellFish (or any SSH client) to a remote Ubuntu server and run `scripts/sandbox/bootstrap-ubuntu.sh` there. It is a re-runnable setup: an unprivileged `sandbox` user, the toolchain, the builds, the checks, and the agent terminal on loopback. See [`docs/IPHONE-SANDBOX.md`](docs/IPHONE-SANDBOX.md).
+
 ## Live sandboxes, multi-model review and container image
 
 - **`opensandbox-sandbox`** runs the test suite for any ref inside a live OpenSandbox sandbox.
