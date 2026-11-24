@@ -218,3 +218,26 @@ For every safety guard, temporarily remove it and confirm that a test fails. Bui
 
 ### Resolution
 - **Resolved**: 2026-11-24 · **Notes**: Already promoted to AGENTS.md ("Prove new tests run"). The skill's rule for recurring patterns is met (3 occurrences across 2+ tasks within 30 days), and the promoted rule now names disabling guards explicitly.
+
+---
+
+## [LRN-20261124-006] knowledge_gap
+
+**Logged**: 2026-11-24T21:55:00Z · **Priority**: medium · **Status**: resolved · **Area**: tests
+
+### Summary
+A test that branches on `os.geteuid()` passed locally as root, but failed on CI's non-root runner, so only one of its two branches had been run.
+
+### Details
+`bootstrap-ubuntu.sh` checked for root with `$(id -u)`. With `PATH` emptied, `id` was missing, so the check misfired and blamed root instead of the missing tools. The bug only showed in the non-root path, and only CI runs that path.
+
+### Suggested Action
+Run a test with branches that depend on the environment under each condition locally, for example as root and as `su nobody`, before pushing. In bash, use the builtin `$EUID` rather than `$(id -u)`.
+
+### Metadata
+- Related Files: scripts/sandbox/bootstrap-ubuntu.sh, tests/test_sandbox_bootstrap.py
+- Pattern-Key: verify.tests_actually_ran · Recurrence-Count: 4 · Last-Seen: 2026-11-24
+- See Also: LRN-20261124-005
+
+### Resolution
+- **Resolved**: 2026-11-24 · **Commit/PR**: #76

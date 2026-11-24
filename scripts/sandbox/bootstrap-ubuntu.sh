@@ -24,7 +24,7 @@ say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 die() { echo "bootstrap: $*" >&2; exit 1; }
 
 admin() {
-  [ "$(id -u)" -eq 0 ] && SUDO="" || SUDO="sudo"
+  [ "$EUID" -eq 0 ] && SUDO="" || SUDO="sudo"
   command -v apt-get >/dev/null || die "this script expects Ubuntu/Debian (apt-get)"
   say "Installing packages"
   $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -qq
@@ -67,7 +67,7 @@ user() {
       *) die "unknown option $a" ;;
     esac
   done
-  [ "$(id -u)" -ne 0 ] || die "run the 'user' step as the unprivileged sandbox user, not root"
+  [ "$EUID" -ne 0 ] || die "run the 'user' step as the unprivileged sandbox user, not root"
   if id -nG | tr ' ' '\n' | grep -qx sudo; then
     echo "WARNING: this account can use sudo; the sandbox is meant to run without admin rights"
   fi
