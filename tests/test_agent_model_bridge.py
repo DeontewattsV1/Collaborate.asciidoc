@@ -1,6 +1,6 @@
 import importlib.util
 import io
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 import json
 import os
 import tempfile
@@ -206,6 +206,62 @@ class PublicationTests(unittest.TestCase):
                                       "--challenges", str(base / "missing"), "--github-run", "999"])
                 self.assertEqual(rc, 1)
                 post.assert_not_called()
+
+
+class UnconfiguredProviderTests(unittest.TestCase):
+    """A provider without a key is skipped visibly, never treated as a pass of its review."""
+
+    def _publish(self, base, providers, reviews):
+        ss = snapshot(providers)
+        bridge.write_json(base / "snapshot.json", ss)
+        (base / "reviews").mkdir()
+        for p in reviews:
+            bridge.write_json(base / f"reviews/review-{p}.json", bridge.evidence_record(ss, p, "review", "m", f"{p} finding"))
+        current = {"state": "open", "base": {"ref": "main"}, "head": {"sha": SHA}}
+        with patch.object(bridge, "get_pr", return_value=current), patch.object(bridge, "github_request") as post:
+            with redirect_stdout(io.StringIO()) as out:
+                rc = bridge.main(["publish", "--pr", "7", "--phase", "review", "--expected-sha", SHA,
+                                  "--snapshot", str(base / "snapshot.json"), "--reviews", str(base / "reviews"),
+                                  "--challenges", str(base / "missing"), "--github-run", "1"])
+        return rc, post, out.getvalue()
+
+    def test_review_without_key_skips_with_warning_and_writes_nothing(self):
+        ss = snapshot()
+        with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {"MODEL_API_KEY": "", "MODEL_NAME": ""}):
+            base = Path(d)
+            bridge.write_json(base / "snapshot.json", ss)
+            with patch.object(bridge, "urlopen") as call, redirect_stdout(io.StringIO()) as out:
+                rc = bridge.main(["review", "--provider", "openai", "--snapshot", str(base / "snapshot.json"),
+                                  "--expected-sha", SHA, "--out", str(base / "review-openai.json")])
+            self.assertEqual(rc, 0)
+            self.assertIn("::warning", out.getvalue())
+            self.assertFalse((base / "review-openai.json").exists())
+            call.assert_not_called()
+
+    def test_key_without_valid_model_still_fails(self):
+        ss = snapshot()
+        with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {"MODEL_API_KEY": "k", "MODEL_NAME": "bad name!"}):
+            base = Path(d)
+            bridge.write_json(base / "snapshot.json", ss)
+            with redirect_stderr(io.StringIO()):
+                rc = bridge.main(["review", "--provider", "openai", "--snapshot", str(base / "snapshot.json"),
+                                  "--expected-sha", SHA, "--out", str(base / "r.json")])
+            self.assertEqual(rc, 1)
+
+    def test_publish_with_no_reviews_posts_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, post, out = self._publish(Path(d), ["openai"], [])
+        self.assertEqual(rc, 0)
+        post.assert_not_called()
+        self.assertIn("Nothing to publish", out)
+
+    def test_partial_publish_names_missing_providers(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, post, _ = self._publish(Path(d), list(bridge.PROVIDERS), ["openai", "gemini"])
+        self.assertEqual(rc, 0)
+        body = post.call_args.kwargs["payload"]["body"]
+        self.assertIn("openai finding", body)
+        self.assertIn("not configured (no output):** anthropic, xai", body)
 
 
 if __name__ == "__main__":
