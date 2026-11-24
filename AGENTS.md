@@ -32,3 +32,4 @@ Log errors, corrections and missing capabilities in `.learnings/` (`ERRORS.md`, 
 - **Before opening a PR, list the open PRs and their files.** Update an existing PR from your branch rather than opening a duplicate, yield paths another PR holds, and never force-push to replace a branch (LRN-20261123-005).
 - **Build and run what a template workflow produces before merging it** (`actionlint` on workflows, `docker run` on images) (ERR-20261123-001, ERR-20261124-003, ERR-20261124-004).
 - **Read back what an outward message actually stored before describing it** (LRN-20261123-001).
+- **Automate what recurs.** Once an error's `Pattern-Key` reaches two occurrences, add a test or a `scripts/repo_hygiene.py` rule (which runs in `go-verify`) and prove it on the commit that had the bug (LRN-20261124-003).

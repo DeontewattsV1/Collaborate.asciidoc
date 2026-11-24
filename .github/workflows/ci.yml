@@ -36,6 +36,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
       - name: Validate required-check ruleset
         run: python3 .github/scripts/validate_ruleset.py
+      - name: Repository hygiene (guards from .learnings/)
+        run: python3 scripts/repo_hygiene.py
       - name: Test MCP model-client harness
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Verify formatting

@@ -31,6 +31,7 @@ Run commands in a terminal: Codespaces, or a local shell after `gh auth login`. 
 
 ### Resolution
 - **Resolved**: 2026-11-24 · **Commit/PR**: #67, #73 · **Notes**: All stray files removed. The setup script still has to run in a real terminal.
+- **Systemic fix**: 2026-11-24 · **Commit/PR**: #74 · **Notes**: `scripts/repo_hygiene.py` now runs inside the required `go-verify` check and fails on any tracked file whose name is a shell command. Replayed against `main@79cb659` and `main@ea6bcd8`, it flags every one of these files.
 
 ---
 
@@ -84,7 +85,7 @@ Before merging any PR whose title starts with "Revert", read its diff stat. Trea
 - Pattern-Key: ops.unreviewed_revert · Recurrence-Count: 1 · First-Seen: 2026-11-23
 
 ### Resolution
-- **Resolved**: 2026-11-24 · **Commit/PR**: #73 (aa3f0ac) · **Notes**: The registry, checker and tests were restored from `5bf7b37^`. Restoring the session hub is still pending a maintainer decision (FEAT-20261124-002).
+- **Resolved**: 2026-11-24 · **Commit/PR**: #73 (aa3f0ac) · **Notes**: The registry, checker and tests were restored from `5bf7b37^`. Guard: `TestCheckedInRegistryBootstrap` (in `go-verify`) fails if the registry is reset again, and `scripts/test_workflow_trust.py` fails if the checkout ref regresses. Restoring the session hub is still pending a maintainer decision (FEAT-20261124-002).
 
 ---
 
@@ -103,6 +104,7 @@ Validate workflow files with `actionlint` before committing them. The snippet's 
 
 ### Resolution
 - **Resolved**: 2026-11-23 · **Commit/PR**: #64
+- **Systemic fix**: 2026-11-24 · **Commit/PR**: #74 · **Notes**: `scripts/repo_hygiene.py`, which runs in `go-verify`, requires every file in `.github/workflows/` to be a `.yml`/`.yaml` workflow with top-level `on:` and `jobs:`, and a Docker build of `.` to have a `Dockerfile`.
 
 ---
 
@@ -121,6 +123,7 @@ A template workflow needs the artifact it expects: a Dockerfile, a site, a packa
 
 ### Resolution
 - **Resolved**: 2026-11-24 · **Commit/PR**: #73 · **Notes**: A multi-stage distroless image of `cmd/agentterm` was added. The image was built and run before merge.
+- **Systemic fix**: 2026-11-24 · **Commit/PR**: #74 · **Notes**: `scripts/repo_hygiene.py`, which runs in `go-verify`, requires every file in `.github/workflows/` to be a `.yml`/`.yaml` workflow with top-level `on:` and `jobs:`, and a Docker build of `.` to have a `Dockerfile`.
 
 ---
 

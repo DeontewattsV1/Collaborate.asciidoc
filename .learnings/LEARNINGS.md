@@ -126,7 +126,7 @@ List open PRs and their files first. Never force-push to replace a branch; use a
 
 ## [LRN-20261124-002] best_practice
 
-**Logged**: 2026-11-24T21:00:00Z · **Priority**: medium · **Status**: pending · **Area**: infra
+**Logged**: 2026-11-24T21:00:00Z · **Priority**: medium · **Status**: resolved · **Area**: infra
 
 ### Summary
 Workflows that need a key nobody has set up should finish green with a "not configured" warning. Real failures must still fail.
@@ -138,4 +138,27 @@ Manual runs without keys turned the Actions page red and hid genuine failures. E
 Apply the same pattern to any new workflow that depends on a credential.
 
 ### Metadata
-- Related Files: .github/workflows/opensandbox-sandbox.yml, .github/workflows/render-sandbox.yml, .github/workflows/agent-model-bridge.yml
+- Related Files: .github/workflows/opensandbox-sandbox.yml, .github/workflows/render-sandbox.yml, .github/workflows/agent-model-bridge.yml, .github/workflows/claude-collaboration.yml
+
+### Resolution
+- **Resolved**: 2026-11-24 · **Commit/PR**: #73, #74 · **Notes**: Applied to `claude-collaboration.yml`, the last workflow that depended on a credential (`ANTHROPIC_API_KEY`).
+
+---
+
+## [LRN-20261124-003] best_practice
+
+**Logged**: 2026-11-24T22:00:00Z · **Priority**: high · **Status**: promoted · **Area**: tests
+
+### Summary
+Turn a recurring logged error into a CI guard, and prove the guard against the real commits where the error happened.
+
+### Details
+Notes in `AGENTS.md` had not stopped `ops.command_pasted_as_file` from recurring three times. A guard in the required check prevents it outright. Its tests replay the exact bad file names. Running it against `main@79cb659` and `main@ea6bcd8` gave 7 and 4 findings, and today's `main` gives none. That shows the guard catches the real cases and does not misfire on a clean tree.
+
+### Suggested Action
+When a `Pattern-Key` reaches `Recurrence-Count >= 2`, prefer automation (a test or CI check) over another written rule. Validate it on a historical commit that had the bug.
+
+### Metadata
+- Source: conversation · Related Files: scripts/repo_hygiene.py, scripts/test_repo_hygiene.py, .github/workflows/ci.yml
+- Pattern-Key: improve.automate_recurring · Recurrence-Count: 1 · First-Seen: 2026-11-24
+- **Promoted**: AGENTS.md
