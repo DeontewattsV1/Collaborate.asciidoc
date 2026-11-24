@@ -12,6 +12,7 @@ This repository is an experimental multi-agent collaboration system, **not a pro
 | `cmd/agent-registry-check`, `internal/agentregistry`, `.github/agent-registry.json` | Which GitHub identity and branch prefix belongs to which agent; this backs the required `agent-registry` check |
 | `internal/ghcoord`, `.github/workflows/collaborate-coordination.yml` | The `coordinate` check: PR path leases and `Collaborate-Claim:` lines |
 | `scripts/agent_model_bridge.py`, `scripts/opensandbox_run.py` | Multi-model PR review and live sandbox runs (`docs/LIVE-SETUP.md`) |
+| `scripts/locker_agents.py`, `agents/locker/`, `.github/workflows/locker-agents.yml` | 1,000 Git Locker assistant agents that brief a primary model (`docs/LOCKER-AGENTS.md`); regenerate the index with `python3 scripts/locker_agents.py index --write` |
 | `scripts/check.sh` | **The one verification command.** CI's `go-verify` runs exactly this. |
 | `scripts/repo_hygiene.py` | Guards against recurring repository mistakes (see `.learnings/`) |
 | `.claude/skills/` | Claude Code skills: `collaborate-pr-workflow`, `self-improvement`, `automate-recurring-errors` |
@@ -45,7 +46,7 @@ Log errors, corrections and missing capabilities in `.learnings/` (`ERRORS.md`, 
 - **Run commands in a terminal, never GitHub's "Add file" box.** Pasting a command there creates a file named after the command, and nothing runs (ERR-20261124-001). Flag any new file whose name looks like a command.
 - **Read the diff stat before merging a PR titled "Revert".** A large revert of policy or security files is a design decision, not cleanup (ERR-20261124-002).
 - **Privileged (`pull_request_target`) workflows check out `${{ github.sha }}` with `persist-credentials: false`, never the PR head.** A PR cannot fix a policy that its own check reads from `main`: say so once on the PR and leave the merge to the maintainer (LRN-20261124-001).
-- **Prove new tests run:** assert that scripted edits matched, and see a new test fail before the fix and pass after it (LRN-20261123-004).
+- **Prove new tests run:** assert that scripted edits matched, and see a new test fail before the fix and pass after it. For a safety guard, temporarily remove the guard and confirm that a test fails, with inputs that no other safeguard could mask (LRN-20261123-004, LRN-20261124-005).
 - **Before opening a PR, list the open PRs and their files.** Update an existing PR from your branch rather than opening a duplicate, yield paths another PR holds, and never force-push to replace a branch (LRN-20261123-005).
 - **Build and run what a template workflow produces before merging it** (`actionlint` on workflows, `docker run` on images) (ERR-20261123-001, ERR-20261124-003, ERR-20261124-004).
 - **Read back what an outward message actually stored before describing it** (LRN-20261123-001).
