@@ -70,7 +70,7 @@ Use a generous token budget (8192), ask for a short answer in the prompt instead
 
 ## [LRN-20261124-001] best_practice
 
-**Logged**: 2026-11-24T21:00:00Z · **Priority**: high · **Status**: promoted · **Area**: infra
+**Logged**: 2026-11-24T21:00:00Z · **Priority**: high · **Status**: promoted_to_skill · **Area**: infra
 
 ### Summary
 A PR cannot fix the policy that its own `pull_request_target` check reads from trusted `main`.
@@ -84,6 +84,7 @@ When a required check reads policy from `main`, say so once on the PR and hand t
 ### Metadata
 - See Also: ERR-20261124-002 · **Promoted**: AGENTS.md
 
+- **Skill-Path**: .claude/skills/collaborate-pr-workflow
 ---
 
 ## [LRN-20261123-004] best_practice
@@ -106,7 +107,7 @@ After a scripted edit, assert that the anchor matched exactly once, and confirm 
 
 ## [LRN-20261123-005] best_practice
 
-**Logged**: 2026-11-24T21:00:00Z · **Priority**: medium · **Status**: promoted · **Area**: config
+**Logged**: 2026-11-24T21:00:00Z · **Priority**: medium · **Status**: promoted_to_skill · **Area**: config
 
 ### Summary
 Before creating a PR, check the open PRs: the maintainer may already have opened one from your branch, or an earlier PR may hold the lease on your paths.
@@ -122,6 +123,7 @@ List open PRs and their files first. Never force-push to replace a branch; use a
 ### Metadata
 - **Promoted**: AGENTS.md
 
+- **Skill-Path**: .claude/skills/collaborate-pr-workflow
 ---
 
 ## [LRN-20261124-002] best_practice
@@ -147,7 +149,7 @@ Apply the same pattern to any new workflow that depends on a credential.
 
 ## [LRN-20261124-003] best_practice
 
-**Logged**: 2026-11-24T22:00:00Z · **Priority**: high · **Status**: promoted · **Area**: tests
+**Logged**: 2026-11-24T22:00:00Z · **Priority**: high · **Status**: promoted_to_skill · **Area**: tests
 
 ### Summary
 Turn a recurring logged error into a CI guard, and prove the guard against the real commits where the error happened.
@@ -162,3 +164,30 @@ When a `Pattern-Key` reaches `Recurrence-Count >= 2`, prefer automation (a test 
 - Source: conversation · Related Files: scripts/repo_hygiene.py, scripts/test_repo_hygiene.py, .github/workflows/ci.yml
 - Pattern-Key: improve.automate_recurring · Recurrence-Count: 1 · First-Seen: 2026-11-24
 - **Promoted**: AGENTS.md
+
+- **Skill-Path**: .claude/skills/automate-recurring-errors
+---
+
+## [LRN-20261124-004] best_practice
+
+**Logged**: 2026-11-24T23:00:00Z · **Priority**: high · **Status**: resolved · **Area**: docs
+
+### Summary
+Instructions that agents read drifted from reality, and every AI that read them was misled.
+
+### Details
+- `README.md` on `main` was still the bridge ZIP's README, so the project README had been overwritten for a day.
+- The README told readers "Go 1.22+", while `go.mod` requires 1.26.
+- The local verification commands in the docs did not match the steps of the required `go-verify` check, so "passes locally" did not mean "passes CI".
+- `CLAUDE.md` had been deleted.
+- `GEMINI.md` and `.github/copilot-instructions.md` did not exist.
+
+### Suggested Action
+Keep one source of truth for each fact. `AGENTS.md` holds the rules and the map, and the per-agent files only point to it. `scripts/check.sh` is the verification, and CI runs that same script. Read the Go version from `go.mod`; never restate it.
+
+### Metadata
+- Source: conversation · Related Files: README.md, AGENTS.md, CLAUDE.md, GEMINI.md, .github/copilot-instructions.md, scripts/check.sh, .github/workflows/ci.yml
+- Pattern-Key: docs.single_source_of_truth · Recurrence-Count: 1 · First-Seen: 2026-11-24
+
+### Resolution
+- **Resolved**: 2026-11-24 · **Commit/PR**: #74

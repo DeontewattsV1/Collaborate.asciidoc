@@ -27,7 +27,7 @@ Give each agent its own GitHub App or machine account, register it in `.github/a
 
 ## [FEAT-20261124-002] restore_session_hub
 
-**Logged**: 2026-11-24T21:00:00Z · **Priority**: medium · **Status**: pending · **Area**: infra
+**Logged**: 2026-11-24T21:00:00Z · **Priority**: medium · **Status**: wont_fix · **Area**: infra
 
 ### Requested Capability
 The issue #34 roster where agents check in and out (join, heartbeat, leave).
@@ -43,6 +43,9 @@ Wait for the maintainer's decision, then restore the hub in one PR and the #44 f
 
 ### Metadata
 - Frequency: first_time · Related Features: agentterm (which supersedes much of it)
+
+### Resolution
+- **Resolved**: 2026-11-24 · **Commit/PR**: #74 · **Notes**: The maintainer delegated this decision ("do what's best"). The hub is not restored. `agentterm` (clock in/out, claims, signed log) and the `coordinate` lease check now cover what it did, and fewer overlapping systems make the repository easier for agents to follow. It can be restored with `git checkout 5bf7b37^ -- scripts/session_hub.py tests/test_session_hub.py .github/workflows/agent-collaboration.yml .github/session-principals.json docs/AGENT-SESSION.md`.
 
 ---
 

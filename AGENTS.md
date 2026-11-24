@@ -2,6 +2,23 @@
 
 This repository is an experimental multi-agent collaboration system, **not a production-ready security boundary**.
 
+## Repository map
+
+| Path | What it is |
+|---|---|
+| `cmd/collaborate`, `internal/broker`, `internal/store`, `internal/mcpserver` | **Pilot 1:** an Ed25519-authenticated broker with leases, a signed ledger and an MCP bridge |
+| `cmd/collab`, `internal/collab`, `internal/sqlite` | **Pilot 2:** a separate local pilot with a shared-token model. Not interchangeable with pilot 1 (see `docs/SECURITY.md`). |
+| `cmd/agentterm`, `internal/agentterm` | Shared agent terminal: clock in and out, claims, a signed log, a web view (`docs/AGENT-TERMINAL.md`, `Dockerfile`) |
+| `cmd/agent-registry-check`, `internal/agentregistry`, `.github/agent-registry.json` | Which GitHub identity and branch prefix belongs to which agent; this backs the required `agent-registry` check |
+| `internal/ghcoord`, `.github/workflows/collaborate-coordination.yml` | The `coordinate` check: PR path leases and `Collaborate-Claim:` lines |
+| `scripts/agent_model_bridge.py`, `scripts/opensandbox_run.py` | Multi-model PR review and live sandbox runs (`docs/LIVE-SETUP.md`) |
+| `scripts/check.sh` | **The one verification command.** CI's `go-verify` runs exactly this. |
+| `scripts/repo_hygiene.py` | Guards against recurring repository mistakes (see `.learnings/`) |
+| `.claude/skills/` | Claude Code skills: `collaborate-pr-workflow`, `self-improvement`, `automate-recurring-errors` |
+| `.learnings/` | Shared log of errors, lessons and requests |
+
+Required checks on `main`: **`go-verify`** and **`agent-registry`**, plus one human approval. `coordinate` reports lease conflicts.
+
 ## Before modifying code
 
 1. Read `README.md`, `docs/GITHUB-AGENTS.md`, `docs/SECURITY.md`, and relevant design documents. Do not assume the `collaborate` and `collab` CLI pilots share identities, schemas, or guarantees.
@@ -19,7 +36,7 @@ This repository is an experimental multi-agent collaboration system, **not a pro
 
 ## Verification and handoff
 
-The module's `go.mod` controls the Go version used by CI. Run checks that are supported in your execution environment; standard CI is `go-verify` (`.github/workflows/ci.yml`). Include changed paths, threats considered, test outputs, remaining unknowns, and exact head SHA in the PR handoff. Leave protected `main` unchanged until its required gates and human review are satisfied.
+The module's `go.mod` controls the Go version used by CI. Run **`scripts/check.sh`** before every push (`--quick` skips the race detector while you iterate); it is exactly what the required `go-verify` check runs, so a local pass means a CI pass. Include changed paths, threats considered, test outputs, remaining unknowns, and exact head SHA in the PR handoff. Leave protected `main` unchanged until its required gates and human review are satisfied.
 
 ## Learnings (self-improvement)
 
