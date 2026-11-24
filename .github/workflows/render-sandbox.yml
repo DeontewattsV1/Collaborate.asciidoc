@@ -35,16 +35,34 @@ jobs:
     environment:
       name: sandbox-render
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check configuration
+        id: cfg
+        env:
+          HAS_KEY: ${{ secrets.RENDER_API_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            msg="sandbox-render has no RENDER_API_KEY secret. Nothing ran. Run scripts/setup_github_environments.sh."
+            echo "::warning title=Render not configured::$msg"
+            echo "### Render: not configured, nothing ran" >> "$GITHUB_STEP_SUMMARY"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.cfg.outputs.configured == 'true'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - if: steps.cfg.outputs.configured == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
       - name: Install Render SDK
+        if: steps.cfg.outputs.configured == 'true'
         working-directory: scripts/sandbox
         run: npm install --no-save --no-audit --no-fund @renderinc/sdk
       - name: Launch sandbox
+        if: steps.cfg.outputs.configured == 'true'
         working-directory: scripts/sandbox
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
@@ -53,8 +71,4 @@ jobs:
           SANDBOX_TIMEOUT_SECONDS: ${{ inputs.timeoutSeconds }}
           SANDBOX_KEEP: ${{ inputs.keep }}
         run: |
-          if [ -z "$RENDER_API_KEY" ]; then
-            echo "::error::Add the RENDER_API_KEY secret to the sandbox-render environment (scripts/setup_github_environments.sh does this)."
-            exit 1
-          fi
           node render-sandbox.mjs

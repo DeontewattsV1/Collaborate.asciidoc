@@ -114,7 +114,7 @@ jobs:
           name: agent-bridge-review-${{ matrix.provider }}
           path: ${{ runner.temp }}/review-${{ matrix.provider }}.json
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: ignore # an unconfigured provider is skipped
 
   challenge:
     name: challenge-${{ matrix.provider }}
@@ -142,6 +142,7 @@ jobs:
           name: agent-bridge-snapshot
           path: ${{ runner.temp }}/input
       - name: Retrieve distinct model outputs for cross-examination
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: agent-bridge-review-*
@@ -166,7 +167,7 @@ jobs:
           name: agent-bridge-challenge-${{ matrix.provider }}
           path: ${{ runner.temp }}/challenge-${{ matrix.provider }}.json
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: ignore # skipped when unconfigured or without peers
 
   publish:
     name: publish-review-evidence-only
@@ -194,6 +195,7 @@ jobs:
           name: agent-bridge-snapshot
           path: ${{ runner.temp }}/snapshot
       - name: Retrieve model outputs
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: agent-bridge-review-*
@@ -201,6 +203,7 @@ jobs:
           merge-multiple: true
       - name: Retrieve challenge outputs if requested
         if: inputs.phase == 'challenge'
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: agent-bridge-challenge-*

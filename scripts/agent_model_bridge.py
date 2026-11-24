@@ -292,7 +292,8 @@ def fence(text: str) -> str:
     return f"{ticks}text\n{text}\n{ticks}"
 
 
-def publication_text(snapshot: dict, reviews: list[dict], challenges: list[dict], run: str) -> str:
+def publication_text(snapshot: dict, reviews: list[dict], challenges: list[dict], run: str,
+                     missing: list[str] | None = None) -> str:
     parts = [MARKER, "### Cross-provider model collaboration — unverified review evidence", "",
              f"**PR:** #{snapshot['pr']} · **HEAD:** `{snapshot['head_sha']}`",
              f"**Snapshot SHA-256:** `{snapshot['snapshot_sha256']}` · **Actions run:** `{run}`", "",
@@ -300,6 +301,8 @@ def publication_text(snapshot: dict, reviews: list[dict], challenges: list[dict]
              "Inputs were GitHub PR textual patches and, in the challenge round, other models' output. "
              "The provider keys stayed in separate environment-scoped jobs. Verification: **NOT RUN**. "
              "The existing Agent Session Hub (#34), path-claim checks and branch protections remain authoritative.", ""]
+    if missing:
+        parts.extend([f"**Requested but not configured (no output):** {', '.join(missing)}", ""])
     for phase, evidence in (("Initial findings", reviews), ("Cross-model challenges", challenges)):
         if not evidence:
             continue
@@ -356,8 +359,16 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("challenge not authorized for this run")
             key = os.environ.get("MODEL_API_KEY", "")
             model = os.environ.get("MODEL_NAME", "")
-            if not key or not MODEL_ID.fullmatch(model):
-                raise ValueError("selected environment must define MODEL_API_KEY secret and MODEL_NAME variable")
+            if not key:
+                # Not configured is not a failure: skip this provider visibly.
+                print(f"::warning title={a.provider} not configured::agent-{a.provider} has no MODEL_API_KEY secret; "
+                      f"{a.command} skipped. Run scripts/setup_github_environments.sh to add it.")
+                return 0
+            if not MODEL_ID.fullmatch(model):
+                raise ValueError("agent-" + a.provider + " has a key but MODEL_NAME is missing or invalid")
+            if a.command == "challenge" and not load_evidence(getattr(a, "peers", None), snap, "review", exclude=a.provider):
+                print(f"::warning title=No peer reviews::{a.provider} has no other provider's review to challenge; skipped.")
+                return 0
             prompt = build_prompt(snap, a.command, a.provider, getattr(a, "peers", None))
             reply = output_from_model(a.provider, model, SYSTEM, prompt, key)
             write_json(a.out, evidence_record(snap, a.provider, a.command, model, reply))
@@ -369,13 +380,16 @@ def main(argv: list[str] | None = None) -> int:
             reviews = load_evidence(a.reviews, snap, "review")
             challenges = load_evidence(a.challenges, snap, "challenge")
             wanted = set(snap["providers"])
-            if {x["provider"] for x in reviews} != wanted:
-                raise ValueError("not all requested providers returned a review")
-            if a.phase == "challenge" and {x["provider"] for x in challenges} != wanted:
-                raise ValueError("not all requested providers returned a challenge")
             if a.phase == "review" and challenges:
                 raise ValueError("unexpected unrequested model challenges")
-            body = publication_text(snap, reviews, challenges, a.github_run)
+            reviewed = {x["provider"] for x in reviews}
+            if not reviewed:
+                print("::warning title=Nothing to publish::No provider returned a review (none configured); no PR comment posted.")
+                return 0
+            if not {x["provider"] for x in challenges} <= reviewed:
+                raise ValueError("challenge from a provider that did not review")
+            missing = sorted(wanted - reviewed)
+            body = publication_text(snap, reviews, challenges, a.github_run, missing)
             if get_pr(a.pr)["head"]["sha"] != snap["head_sha"]:
                 raise ValueError("PR head moved; refusing to post stale feedback")
             github_request(f"/issues/{a.pr}/comments", method="POST", payload={"body": body})

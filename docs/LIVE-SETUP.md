@@ -70,3 +70,17 @@ For other apps:
 | Live provider, OpenSandbox server, Render and box calls | **NOT RUN** |
 
 The live calls need your keys and a reachable OpenSandbox server. The first workflow run after setup is the live test.
+
+## Container image
+
+Every push to `main` builds and publishes the agent terminal as a signed image, `ghcr.io/deontewattsv1/collaborate.asciidoc` (the `Docker` workflow; no setup needed). Pull requests build the image without pushing it.
+
+```bash
+docker run --rm -p 8787:8787 -v agentterm-data:/data ghcr.io/deontewattsv1/collaborate.asciidoc:main
+```
+
+The server listens on port 8787 and runs as a non-root user. Its signed log and server key persist in the `/data` volume.
+
+## Unconfigured workflows stay green
+
+When a workflow's environment has no key yet, `opensandbox-sandbox`, `render-sandbox` and `agent-model-bridge` finish successfully with a **"not configured, nothing ran"** warning and job summary. They never report a configured run that did not happen. Real problems still fail the run: a failing test, a bad PR number, a key with an invalid `MODEL_NAME`, or a provider error.
