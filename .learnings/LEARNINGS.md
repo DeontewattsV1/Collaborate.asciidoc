@@ -191,3 +191,30 @@ Keep one source of truth for each fact. `AGENTS.md` holds the rules and the map,
 
 ### Resolution
 - **Resolved**: 2026-11-24 · **Commit/PR**: #74
+
+---
+
+## [LRN-20261124-005] best_practice
+
+**Logged**: 2026-11-24T21:40:00Z · **Priority**: high · **Status**: resolved · **Area**: tests
+
+### Summary
+Two new safety tests passed even after the guard they were meant to cover was removed. Disabling each guard in turn exposed this.
+
+### Details
+In the locker-agents work, tests were written for the delegation depth cap and for trace redaction. When each guard was removed from the code, both tests still passed:
+- **Depth cap:** the fake model delegated back to an ancestor, so the cycle check ended the chain before the depth cap mattered.
+- **Trace redaction:** secrets were already redacted one layer earlier, so removing the trace-level redaction changed nothing a test could see.
+
+Both tests were rewritten so that only the targeted guard can stop the failure. After that, all four guards (depth, call budget, cycles, redaction) failed at least one test when removed.
+
+### Suggested Action
+For every safety guard, temporarily remove it and confirm that a test fails. Build the test's fake inputs so that no *other* safeguard can mask the guard under test.
+
+### Metadata
+- Source: conversation · Related Files: tests/test_locker_agents.py, scripts/locker_agents.py
+- Pattern-Key: verify.tests_actually_ran · Recurrence-Count: 3 · Last-Seen: 2026-11-24
+- See Also: LRN-20261123-004
+
+### Resolution
+- **Resolved**: 2026-11-24 · **Notes**: Already promoted to AGENTS.md ("Prove new tests run"). The skill's rule for recurring patterns is met (3 occurrences across 2+ tasks within 30 days), and the promoted rule now names disabling guards explicitly.

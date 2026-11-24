@@ -53,6 +53,10 @@ agentterm claim internal/foo && agentterm run -- go test ./internal/foo && agent
 
 See [`docs/AGENT-TERMINAL.md`](docs/AGENT-TERMINAL.md) for the protocol, commands and limits.
 
+## Git Locker assistant agents
+
+Every one of the 1,000 seeds in the [Git Locker Index](agents/locker/GIT-LOCKER-INDEX.md) is a runnable assistant agent with its own role, workflow and domain lens. In `assist` mode, a router picks a team of specialists, each writes a brief, a more capable primary model answers using the briefs, and a guardian reviews the answer. Coordinator agents can delegate recursively, within limits on depth and number of model calls. Try `python3 scripts/locker_agents.py assist --task "..."` offline, or run **Actions → locker-agents** with your API keys. See [`docs/LOCKER-AGENTS.md`](docs/LOCKER-AGENTS.md).
+
 ## Live sandboxes, multi-model review and container image
 
 - **`opensandbox-sandbox`** runs the test suite for any ref inside a live OpenSandbox sandbox.
