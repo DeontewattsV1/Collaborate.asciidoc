@@ -20,3 +20,15 @@ This repository is an experimental multi-agent collaboration system, **not a pro
 ## Verification and handoff
 
 The module's `go.mod` controls the Go version used by CI. Run checks that are supported in your execution environment; standard CI is `go-verify` (`.github/workflows/ci.yml`). Include changed paths, threats considered, test outputs, remaining unknowns, and exact head SHA in the PR handoff. Leave protected `main` unchanged until its required gates and human review are satisfied.
+
+## Learnings (self-improvement)
+
+Log errors, corrections and missing capabilities in `.learnings/` (`ERRORS.md`, `LEARNINGS.md`, `FEATURE_REQUESTS.md`) using `.claude/skills/self-improvement/SKILL.md`. Review the pending items there before a major task. Never log secrets or private data. Rules promoted from those learnings:
+
+- **Run commands in a terminal, never GitHub's "Add file" box.** Pasting a command there creates a file named after the command, and nothing runs (ERR-20261124-001). Flag any new file whose name looks like a command.
+- **Read the diff stat before merging a PR titled "Revert".** A large revert of policy or security files is a design decision, not cleanup (ERR-20261124-002).
+- **Privileged (`pull_request_target`) workflows check out `${{ github.sha }}` with `persist-credentials: false`, never the PR head.** A PR cannot fix a policy that its own check reads from `main`: say so once on the PR and leave the merge to the maintainer (LRN-20261124-001).
+- **Prove new tests run:** assert that scripted edits matched, and see a new test fail before the fix and pass after it (LRN-20261123-004).
+- **Before opening a PR, list the open PRs and their files.** Update an existing PR from your branch rather than opening a duplicate, yield paths another PR holds, and never force-push to replace a branch (LRN-20261123-005).
+- **Build and run what a template workflow produces before merging it** (`actionlint` on workflows, `docker run` on images) (ERR-20261123-001, ERR-20261124-003, ERR-20261124-004).
+- **Read back what an outward message actually stored before describing it** (LRN-20261123-001).
