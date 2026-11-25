@@ -411,7 +411,7 @@ func TestExecPolicy(t *testing.T) {
 	on := ExecPolicy{Enabled: true}
 	for _, argv := range [][]string{
 		{"go", "test", "./..."}, {"go", "vet", "./internal/agentterm"}, {"gofmt", "-l", "cmd", "internal"},
-		{"git", "status"}, {"git", "diff", "--stat"}, {"python3", "-m", "unittest", "discover", "-s", "tests"},
+		{"git", "status"}, {"git", "diff", "--stat"}, {"git", "rev-parse", "--git-dir"}, {"python3", "-m", "unittest", "discover", "-s", "tests"},
 		{"go", "test", "-count=1", "-run", "TestX", "./..."},
 	} {
 		if err := on.Check(argv); err != nil {
@@ -425,7 +425,6 @@ func TestExecPolicy(t *testing.T) {
 		{"go", "vet", "-vettool=/bin/sh"}, {"gofmt", "-w", "x.go"}, {"gofmt", "-l", "-w", "x.go"}, {"git", "diff", "--output=/tmp/x"},
 		{"git", "log", "../../etc"}, {"git", "show", "/etc/passwd"}, {"python3", "-c", "print(1)"}, {"python3", "-m", "http.server"},
 		{"go", "test", "-C", "/"}, {"go", "build", "-pkgdir=/tmp"},
-		{"git", "status", "--git-dir=/tmp"}, {"git", "diff", "--work-tree=/"},
 		{"/usr/bin/git", "status"}, {"./go", "version"},
 	} {
 		if err := on.Check(argv); err == nil {

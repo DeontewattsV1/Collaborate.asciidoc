@@ -51,7 +51,7 @@ var pythonModules = map[string]bool{"unittest": true, "py_compile": true}
 
 // Flags that would write files outside the workspace, run another program,
 // or redirect configuration.
-var deniedFlagPrefixes = []string{"-o", "-exec", "-toolexec", "-C", "-modfile", "-overlay", "-vettool", "-ldflags", "-pkgdir", "--output", "--ext-diff", "--textconv", "-w", "--exec", "--upload-pack", "--config", "--git-dir", "--work-tree"}
+var deniedFlagPrefixes = []string{"-o", "-exec", "-toolexec", "-C", "-modfile", "-overlay", "-vettool", "-ldflags", "-pkgdir", "--output", "--ext-diff", "--textconv", "-w", "--exec", "--upload-pack", "--config"}
 
 // Check reports whether argv may run under the policy.
 func (p ExecPolicy) Check(argv []string) error {

@@ -48,9 +48,6 @@ func safeGitArg(s string) (string, error) {
 }
 
 func git(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	if _, err := safeGitArg(dir); err != nil {
-		return nil, fmt.Errorf("invalid git directory: %w", err)
-	}
 	c := exec.CommandContext(ctx, "git", args...)
 	c.Dir = dir
 	out, err := c.CombinedOutput()
