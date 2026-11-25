@@ -21,12 +21,12 @@ The script creates each environment, limits it to `main`, sets `MODEL_NAME`, and
 
 GitHub will not show a secret back. On the VM, export the value as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `XAI_API_KEY`. See [`DEV-GUILD.md`](DEV-GUILD.md).
 
-The Vercel app can also use `AI_GATEWAY_API_KEY` (AI Gateway). That key is not one of these environments. If it is missing or the gateway returns an error, the VM keys above are the fallback.
+The phone's primary model path is the free Gemini API. Set `GOOGLE_GENERATIVE_AI_API_KEY` as a repository Actions secret and as a server-side Vercel environment variable. Optional `GROQ_API_KEY` and `OPENROUTER_API_KEY` are the next free fallbacks. The VM keys above answer when those are unset or exhausted. See [`DEV-GUILD.md`](DEV-GUILD.md).
 
 ## Never
 
 - Never paste a key into a file that is committed, an issue, a PR, a workflow input, or a chat. If one was exposed, rotate it.
-- Never put provider keys in Vercel except `AI_GATEWAY_API_KEY` for the gateway. Per-provider keys stay on the VM.
+- `GOOGLE_GENERATIVE_AI_API_KEY` may be set on Vercel, server-side only. The VM's per-provider keys stay on the VM.
 
 ## Container image
 

@@ -1,0 +1,32 @@
+name: guild-gemini-smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: gemini-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/dev-guild/package-lock.json
+      - name: Install Dev Guild dependencies
+        working-directory: web/dev-guild
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Ask Gemini for a non-empty reply
+        working-directory: web/dev-guild
+        env:
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+        run: node scripts/gemini-smoke.mjs

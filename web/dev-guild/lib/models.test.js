@@ -1,0 +1,202 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  FLASH_LITE,
+  GEMMA,
+  HYDROGEN,
+  OPENROUTER_FREE,
+  attachmentParts,
+  attemptsFor,
+  deliverOwnerMessage,
+  demoStreamEvents,
+  googleThinking,
+  isRateLimit,
+  modelFor,
+  providerRequest,
+  runFreeAttempts,
+  runTool,
+  searchHistory,
+  validateHandoff,
+} from "./models.js";
+
+function card(id) {
+  return { id, name: id, system: `You are ${id}. Catchphrase stays in the prompt.` };
+}
+
+const cast = [card("claude"), card("grok"), card("codex"), card("ollama")];
+const threads = [{ id: "guild", group: true, members: ["owner", "claude", "grok", "codex"] }];
+
+function backendFactory(log) {
+  return async (method, path, body) => {
+    log.push({ method, path, body });
+    if (path === "/v1/characters") return { characters: cast };
+    if (path === "/v1/threads") return { threads };
+    return {};
+  };
+}
+
+test("no free keys falls back to the VM and does not call a model", async () => {
+  const log = [];
+  let calls = 0;
+  const result = await deliverOwnerMessage({
+    threadId: "guild",
+    text: "@claude hello",
+    env: {},
+    backend: backendFactory(log),
+    complete: async () => {
+      calls += 1;
+      return { ok: true, text: "no" };
+    },
+  });
+  assert.equal(calls, 0);
+  assert.equal(result.via, "provider");
+  assert.equal(result.reason, "unset");
+  assert.ok(log.some((call) => String(call.path).endsWith("/respond")));
+});
+
+test("characters use free Gemini models only", () => {
+  assert.equal(modelFor("claude"), HYDROGEN);
+  assert.equal(modelFor("grok"), FLASH_LITE);
+  assert.equal(modelFor("ollama"), GEMMA);
+  assert.equal(modelFor("docker"), GEMMA);
+  const chain = attemptsFor({ GOOGLE_GENERATIVE_AI_API_KEY: "k" }, "claude").map((a) => a.modelId);
+  assert.deepEqual(chain, [HYDROGEN, FLASH_LITE, GEMMA]);
+  for (const id of [HYDROGEN, FLASH_LITE, GEMMA]) {
+    assert.equal(id.includes("carbon") || id.includes("argon") || id.includes("neon"), false);
+  }
+});
+
+test("a 429 tries the next free Gemini model", async () => {
+  const seen = [];
+  const result = await runFreeAttempts({
+    attempts: attemptsFor({ GOOGLE_GENERATIVE_AI_API_KEY: "k" }, "claude"),
+    run: async (attempt) => {
+      seen.push(attempt.modelId);
+      if (attempt.modelId === HYDROGEN) {
+        const err = new Error("429 RESOURCE_EXHAUSTED");
+        err.statusCode = 429;
+        throw err;
+      }
+      return { text: "Let me sit with that." };
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.modelId, FLASH_LITE);
+  assert.deepEqual(seen, [HYDROGEN, FLASH_LITE]);
+  assert.equal(isRateLimit({ status: 429 }), true);
+});
+
+test("a non-429 Google error skips the rest of Gemini and tries Groq", async () => {
+  const seen = [];
+  const result = await runFreeAttempts({
+    attempts: attemptsFor({ GOOGLE_GENERATIVE_AI_API_KEY: "k", GROQ_API_KEY: "g" }, "claude"),
+    run: async (attempt) => {
+      seen.push(attempt.provider);
+      if (attempt.provider === "google") {
+        const err = new Error("invalid key");
+        err.statusCode = 401;
+        throw err;
+      }
+      return { text: "Groq answered." };
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.provider, "groq");
+  assert.deepEqual(seen, ["google", "groq"]);
+});
+
+test("Groq and OpenRouter run only when set, and OpenRouter stays on :free", async () => {
+  const none = attemptsFor({}, "grok");
+  assert.equal(none.length, 0);
+  const both = attemptsFor({ GROQ_API_KEY: "g", OPENROUTER_API_KEY: "o" }, "grok");
+  assert.equal(both[0].provider, "groq");
+  assert.ok(both.slice(1).every((item) => item.modelId.endsWith(":free")));
+  assert.deepEqual(OPENROUTER_FREE.every((id) => id.endsWith(":free")), true);
+});
+
+test("Gemma requests omit thinkingConfig", () => {
+  const request = providerRequest({
+    provider: "google",
+    modelId: GEMMA,
+    character: { id: "ollama" },
+    prompt: "hi",
+  });
+  assert.equal(request.providerOptions, undefined);
+});
+
+test("Google requests ask for thought summaries and never set a gateway", async () => {
+  const request = providerRequest({
+    provider: "google",
+    modelId: HYDROGEN,
+    character: { id: "claude", name: "Claude" },
+    system: "You are Claude.",
+    prompt: "hello",
+    tools: { read_repo_file: {}, lookup_log: {}, handoff: {} },
+  });
+  assert.equal(request.providerOptions.gateway, undefined);
+  assert.equal(request.providerOptions.google.thinkingConfig.includeThoughts, true);
+  assert.equal(request.providerOptions.google.thinkingConfig.thinkingLevel, "high");
+  assert.equal(googleThinking("grok").thinkingConfig.thinkingLevel, "low");
+  assert.equal(googleThinking("operator").thinkingConfig.includeThoughts, false);
+  assert.ok(request.tools.read_repo_file);
+  assert.ok(request.tools.handoff);
+});
+
+test("a long thought trace is reduced to a short summary", async () => {
+  const marker = "UNIQUE-TAIL-SHOULD-NOT-LEAK";
+  const raw = `${"step one of private scratch work. ".repeat(40)}${marker}`;
+  const result = await runFreeAttempts({
+    attempts: [{ provider: "google", modelId: FLASH_LITE }],
+    run: async () => ({ text: "Skip the ceremony.", reasoningText: raw }),
+  });
+  assert.equal(result.summary.length <= 240, true);
+  assert.equal(result.reasoningText, undefined);
+  assert.equal(JSON.stringify(result).includes(marker), false);
+});
+
+test("images and PDFs become input_image and input_file", () => {
+  const png = Buffer.from("png").toString("base64");
+  const pdf = Buffer.from("%PDF-1.4").toString("base64");
+  const parts = attachmentParts([
+    { name: "shot.png", mediaType: "image/png", data: png },
+    { name: "notes.pdf", mediaType: "application/pdf", data: pdf },
+  ]);
+  assert.equal(parts[0].type, "input_image");
+  assert.equal(parts[1].type, "input_file");
+  assert.throws(() => attachmentParts([{ name: ".env", mediaType: "text/plain", data: png }]));
+});
+
+test("handoff writes a tool line and a task card", async () => {
+  const calls = [];
+  const result = await runTool({
+    name: "handoff",
+    from: "claude",
+    threadId: "guild",
+    known: new Set(["codex", "claude"]),
+    args: { task: "Write the handler", assignee: "codex", status: "handed-off" },
+    backend: async (method, path, body) => {
+      calls.push(body);
+      return {};
+    },
+  });
+  assert.equal(result.card.status, "handed-off");
+  assert.ok(calls.some((body) => body.kind === "tool" && body.tool === "handoff"));
+  assert.ok(calls.some((body) => body.kind === "card"));
+  assert.equal(validateHandoff({ task: "x", assignee: "codex", status: "nope" }, new Set(["codex"])).ok, false);
+});
+
+test("search returns recent matching lines and does not call a reranker", () => {
+  const docs = [{ text: "alpha one" }, { text: "beta two" }, { text: "alpha three" }];
+  const found = searchHistory({ query: "alpha", documents: docs });
+  assert.equal(found.via, "recent");
+  assert.deepEqual(found.documents.map((d) => d.text), ["alpha one", "alpha three"]);
+  assert.equal(JSON.stringify(found).includes("cohere"), false);
+});
+
+test("demo stream has a summary, a tool, and a card", () => {
+  const events = demoStreamEvents({ from: "claude", userText: "@claude a small API" });
+  const names = events.map((event) => event.event);
+  assert.ok(names.includes("typing") && names.includes("delta") && names.includes("reasoning"));
+  assert.ok(names.includes("tool") && names.includes("card"));
+  assert.equal(JSON.stringify(events).includes("reasoningText"), false);
+});
