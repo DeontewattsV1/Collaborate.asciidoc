@@ -59,7 +59,7 @@ Every one of the 1,000 seeds in the [Git Locker Index](agents/locker/GIT-LOCKER-
 
 ## iPhone sandbox terminal
 
-To drive the repository and its agents from an iPhone, connect Secure ShellFish (or any SSH client) to a remote Ubuntu server and run `scripts/sandbox/bootstrap-ubuntu.sh` there. It is a re-runnable setup: an unprivileged `sandbox` user, the toolchain, the builds, the checks, and the agent terminal on loopback. See [`docs/IPHONE-SANDBOX.md`](docs/IPHONE-SANDBOX.md).
+To drive the repository and its agents from an iPhone at $0 cost, open a free GitHub Codespace (configured automatically by `.devcontainer/devcontainer.json`) or connect Secure ShellFish to an Oracle Cloud Always Free Ubuntu 24.04 ARM64 VM and run `scripts/sandbox/bootstrap-ubuntu.sh`. It is a re-runnable setup: an unprivileged `sandbox` user (for VMs), the toolchain, the builds, the checks, and the agent terminal on loopback. See [`docs/IPHONE-SANDBOX.md`](docs/IPHONE-SANDBOX.md).
 
 ## Live sandboxes, multi-model review and container image
 
