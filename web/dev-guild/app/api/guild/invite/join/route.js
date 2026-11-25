@@ -22,7 +22,12 @@ import {
 
 export const dynamic = "force-dynamic";
 
+import { isDemoMode } from "../../../../../lib/demo.js";
+
 export async function POST(request) {
+  if (isDemoMode()) {
+    return NextResponse.json({ error: "Invites are disabled in public demo mode." }, { status: 401 });
+  }
   const token = getOwnerToken();
   if (!token) return NextResponse.json({ error: "Server access passphrase unset." }, { status: 503 });
   let body = {};

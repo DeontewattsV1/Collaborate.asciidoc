@@ -1,11 +1,15 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getOwnerToken, inviteCodeFor, isOwnerCookie, readGroupPrefs } from "../../../../lib/auth.js";
+import { isDemoMode } from "../../../../lib/demo.js";
 import { mergeGroupPrefs } from "../../../../lib/store.js";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
+  if (isDemoMode()) {
+    return NextResponse.json({ error: "Invites are disabled in public demo mode." }, { status: 401 });
+  }
   const token = getOwnerToken();
   if (!token) return NextResponse.json({ error: "Access passphrase unset." }, { status: 503 });
   const jar = await cookies();

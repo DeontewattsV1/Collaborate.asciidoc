@@ -10,6 +10,14 @@ import {
   sealGroupPrefs,
 } from "../../../../lib/auth.js";
 import {
+  checkDemoRateLimit,
+  clientIpFromRequest,
+  DEMO_MAX_INPUT_CHARS,
+  DEMO_MAX_OUTPUT_TOKENS,
+  DEMO_MAX_TURNS,
+  isDemoMode,
+} from "../../../../lib/demo.js";
+import {
   completeWithProvider,
   MAX_TURNS,
   parseMentions,
@@ -57,8 +65,9 @@ async function handleProxy(request, { params }) {
   }
 
   const joined = parts.join("/");
-  const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
-  const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
+  const demo = isDemoMode();
+  const cookieAgents = demo ? [] : decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
+  const cookiePrefs = demo ? null : readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
   const prefs = mergeGroupPrefs(cookiePrefs);
 
   // GET /api/guild/v1/characters
@@ -69,6 +78,7 @@ async function handleProxy(request, { params }) {
       customAgents: cookieAgents,
       vmCharacters: vm && vm.characters,
       includeSecrets: false,
+      includeDirectory: true,
       groupTitle: prefs.title,
     });
     return NextResponse.json({ characters });
@@ -82,6 +92,7 @@ async function handleProxy(request, { params }) {
       env: process.env,
       customAgents: cookieAgents,
       vmCharacters: vmChars && vmChars.characters,
+      includeDirectory: true,
       groupTitle: prefs.title,
     });
     const threads = listThreads({
@@ -102,7 +113,7 @@ async function handleProxy(request, { params }) {
     }
     const vm = await tryVm(token, "POST", "/v1/threads", body);
     if (vm && vm.id) return NextResponse.json(vm);
-    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
+    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, includeDirectory: true, groupTitle: prefs.title });
     try {
       const thread = openDMThread(String(body.with || ""), catalog);
       return NextResponse.json(thread);
@@ -113,6 +124,9 @@ async function handleProxy(request, { params }) {
 
   // POST /api/guild/v1/group (create/configure or rename group chat)
   if (request.method === "POST" && joined === "v1/group") {
+    if (demo) {
+      return NextResponse.json({ error: "Group settings are disabled in public demo mode." }, { status: 401 });
+    }
     if (auth.role !== "owner") {
       return NextResponse.json({ error: "Only the group owner can update group settings." }, { status: 403 });
     }
@@ -122,7 +136,7 @@ async function handleProxy(request, { params }) {
     } catch {
       return NextResponse.json({ error: "bad json" }, { status: 400 });
     }
-    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
+    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, includeDirectory: true, groupTitle: prefs.title });
     const wasSetupDone = Boolean(prefs.setupDone);
     const nextPrefs = configureGroup(
       {
@@ -162,6 +176,9 @@ async function handleProxy(request, { params }) {
 
   // POST /api/guild/v1/group/members (add/remove character from group)
   if (request.method === "POST" && joined === "v1/group/members") {
+    if (demo) {
+      return NextResponse.json({ error: "Roster changes are disabled in public demo mode." }, { status: 401 });
+    }
     let body = {};
     try {
       body = await request.json();
@@ -170,7 +187,7 @@ async function handleProxy(request, { params }) {
     }
     const id = String(body.id || "").trim();
     const action = body.action === "remove" ? "remove" : "add";
-    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
+    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, includeDirectory: true, groupTitle: prefs.title });
     const character = catalog.find((c) => c.id === id);
     if (!character) {
       return NextResponse.json({ error: "unknown character" }, { status: 400 });
@@ -207,18 +224,42 @@ async function handleProxy(request, { params }) {
       return NextResponse.json({ error: "bad json" }, { status: 400 });
     }
     const threadId = parts[2];
-    const text = String(body.text || "").trim();
+    const rawText = String(body.text || "").trim();
+    const text = demo ? rawText.slice(0, DEMO_MAX_INPUT_CHARS) : rawText;
     if (!text) return NextResponse.json({ error: "message is empty" }, { status: 400 });
+    let rateInfo = null;
+    if (demo) {
+      rateInfo = checkDemoRateLimit(clientIpFromRequest(request), { cookieVal: jar.get("guild_demo_rl")?.value });
+      if (!rateInfo.allowed) {
+        return NextResponse.json(
+          {
+            error: "Demo rate limit reached (10 messages/hour). Deploy your own free copy from the README for unlimited chat!",
+            retryAfterSeconds: rateInfo.retryAfterSeconds,
+          },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": String(rateInfo.retryAfterSeconds),
+              "X-RateLimit-Limit": String(rateInfo.limit),
+              "X-RateLimit-Remaining": "0",
+            },
+          },
+        );
+      }
+    }
 
-    const [vmChars, vmThreads] = await Promise.all([
-      tryVm(token, "GET", "/v1/characters"),
-      tryVm(token, "GET", "/v1/threads"),
-    ]);
+    const [vmChars, vmThreads] = demo
+      ? [null, null]
+      : await Promise.all([
+          tryVm(token, "GET", "/v1/characters"),
+          tryVm(token, "GET", "/v1/threads"),
+        ]);
     const catalog = buildCatalog({
       env: process.env,
       customAgents: cookieAgents,
       vmCharacters: vmChars && vmChars.characters,
       includeSecrets: true,
+      includeDirectory: true,
       groupTitle: prefs.title,
     });
     const threads = listThreads({
@@ -232,8 +273,12 @@ async function handleProxy(request, { params }) {
       members: ["owner"],
     };
 
-    const senderId = auth.role === "owner" ? "owner" : (auth.participant && auth.participant.id) || "guest";
-    const senderName = auth.role === "owner" ? prefs.ownerName : (auth.participant && auth.participant.name) || "Guest";
+    const senderId = (auth.role === "owner" || auth.role === "demo") ? "owner" : (auth.participant && auth.participant.id) || "guest";
+    const senderName = auth.role === "demo"
+      ? "You"
+      : auth.role === "owner"
+        ? prefs.ownerName
+        : (auth.participant && auth.participant.name) || "Guest";
     const posted = appendLine({
       threadId,
       from: senderId,
@@ -241,7 +286,7 @@ async function handleProxy(request, { params }) {
       text,
       catalog,
     });
-    await tryVm(token, "POST", `/v1/threads/${threadId}/messages`, { text, reply: "hold" });
+    if (!demo) await tryVm(token, "POST", `/v1/threads/${threadId}/messages`, { text, reply: "hold" });
 
     const known = new Set(catalog.map((c) => c.id));
     const activeIds = new Set(catalog.filter((c) => c.online).map((c) => c.id));
@@ -257,10 +302,11 @@ async function handleProxy(request, { params }) {
       priorityIds: customPriority,
     });
 
+    const maxTurns = demo ? DEMO_MAX_TURNS : MAX_TURNS;
     const replies = [];
     const seen = new Set([senderId]);
     let turns = 0;
-    while (queue.length && turns < MAX_TURNS) {
+    while (queue.length && turns < maxTurns) {
       const id = queue.shift();
       if (!id || seen.has(id)) continue;
       seen.add(id);
@@ -272,11 +318,13 @@ async function handleProxy(request, { params }) {
         character,
         system: character.system,
         prompt: text,
+        maxOutputTokens: demo ? DEMO_MAX_OUTPUT_TOKENS : undefined,
         run: (req) =>
           generateText({
             model: languageModel(req),
             system: req.system,
             prompt: req.prompt,
+            maxOutputTokens: req.maxOutputTokens,
             providerOptions: req.providerOptions,
             maxRetries: 0,
           }),
@@ -290,12 +338,14 @@ async function handleProxy(request, { params }) {
           catalog,
         });
         replies.push(msg);
-        await tryVm(token, "POST", `/v1/threads/${threadId}/lines`, {
-          from: id,
-          kind: "message",
-          text: result.text,
-          reasoning: result.summary || "",
-        });
+        if (!demo) {
+          await tryVm(token, "POST", `/v1/threads/${threadId}/lines`, {
+            from: id,
+            kind: "message",
+            text: result.text,
+            reasoning: result.summary || "",
+          });
+        }
         if (thread.group) {
           for (const mention of parseMentions(result.text, known)) {
             if (!seen.has(mention)) queue.push(mention);
@@ -304,12 +354,23 @@ async function handleProxy(request, { params }) {
       }
     }
 
-    return NextResponse.json({
-      pending: false,
-      via: replies.length ? "gemini" : "standalone",
-      message: posted,
-      replies,
-    });
+    return NextResponse.json(
+      {
+        pending: false,
+        via: demo ? "demo-live" : (replies.length ? "gemini" : "standalone"),
+        message: posted,
+        replies,
+        rateLimit: rateInfo ? { limit: rateInfo.limit, remaining: rateInfo.remaining } : undefined,
+      },
+      rateInfo
+        ? {
+            headers: {
+              "X-RateLimit-Limit": String(rateInfo.limit),
+              "X-RateLimit-Remaining": String(rateInfo.remaining),
+            },
+          }
+        : undefined,
+    );
   }
 
   // Fallback VM proxy for any other /v1/* path when VM is configured

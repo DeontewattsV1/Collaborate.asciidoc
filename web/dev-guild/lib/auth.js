@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
+import { isDemoMode } from "./demo.js";
 
 const keyCache = new Map();
 
@@ -159,6 +160,9 @@ export function readGroupPrefs(raw, token) {
 }
 
 export function checkGuildAuth({ jar, token, inviteParam, authHeader, env }) {
+  if (isDemoMode(env)) {
+    return { ok: true, role: "demo", participant: { id: "owner", name: "You" } };
+  }
   if (!token) return { ok: false, status: 503, error: "The server has no access passphrase configured." };
   if (isOwnerCookie(jar?.get("guild_session")?.value || "", token)) {
     return { ok: true, role: "owner", participant: { id: "owner", name: getOwnerName(env) } };

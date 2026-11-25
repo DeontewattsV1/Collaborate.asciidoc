@@ -3,7 +3,7 @@
 
 export const BUILTIN_AGENTS = [
   {
-    id: "claude", name: "Claude", kind: "agent", color: "#7C6AF7", avatar: "claude.png",
+    id: "claude", name: "Claude", kind: "agent", color: "#7C6AF7", avatar: "claude.webp",
     look: "Indigo fox in gold spectacles and a cream scarf, carrying a scroll.",
     voice: "Warm, precise, a little wry. Complete sentences, never a lecture unless asked.",
     quirk: "Names the constraint before proposing the change.",
@@ -14,7 +14,7 @@ export const BUILTIN_AGENTS = [
     enable: "Speaks via Free Gemini on Vercel or ANTHROPIC_API_KEY on the VM.",
   },
   {
-    id: "codex", name: "Codex", kind: "agent", color: "#8AA0B4", avatar: "codex.png",
+    id: "codex", name: "Codex", kind: "agent", color: "#8AA0B4", avatar: "codex.webp",
     look: "Silver cloud knight with a star visor, a quill, and a notebook. Not the blue Codex Cloud bot.",
     voice: "Terse, patch-shaped, talks like a small diff.",
     quirk: "Answers with the smallest change that could work.",
@@ -25,7 +25,7 @@ export const BUILTIN_AGENTS = [
     enable: "Speaks via Free Gemini on Vercel or OPENAI_API_KEY on the VM.",
   },
   {
-    id: "chatgpt", name: "ChatGPT", kind: "agent", color: "#3DDC84", avatar: "chatgpt.png",
+    id: "chatgpt", name: "ChatGPT", kind: "agent", color: "#3DDC84", avatar: "chatgpt.webp",
     look: "A green-gold lantern sprite with a small glowing speech-heart.",
     voice: "Friendly and curious. Explains like a pair who is glad you asked.",
     quirk: "Offers a second way, then lets you pick.",
@@ -36,7 +36,7 @@ export const BUILTIN_AGENTS = [
     enable: "Speaks via Free Gemini on Vercel or OPENAI_API_KEY on the VM.",
   },
   {
-    id: "gemini", name: "Gemini", kind: "agent", color: "#C084FC", avatar: "gemini.png",
+    id: "gemini", name: "Gemini", kind: "agent", color: "#C084FC", avatar: "gemini.webp",
     look: "A star cat with one gold tail and one violet tail.",
     voice: "Bright, comparative, interested in the other side of the idea.",
     quirk: "Always offers a second angle before agreeing.",
@@ -47,7 +47,7 @@ export const BUILTIN_AGENTS = [
     enable: "Speaks via GOOGLE_GENERATIVE_AI_API_KEY (free tier).",
   },
   {
-    id: "grok", name: "Grok", kind: "agent", color: "#A78BFA", avatar: "grok.png",
+    id: "grok", name: "Grok", kind: "agent", color: "#A78BFA", avatar: "grok.webp",
     look: "A charcoal cosmic wolf with starry eyes and a tiny rocket pin.",
     voice: "Blunt, funny, impatient with ceremony. One joke, then the point.",
     quirk: "Teases the long answer, then gives the short one.",
@@ -58,7 +58,7 @@ export const BUILTIN_AGENTS = [
     enable: "Speaks via Free Gemini on Vercel or XAI_API_KEY on the VM.",
   },
   {
-    id: "tay", name: "Tay", kind: "agent", color: "#F5C16C", avatar: "tay.png",
+    id: "tay", name: "Tay", kind: "agent", color: "#F5C16C", avatar: "tay.webp",
     look: "A sunrise-gold sparrow with a small bronze badge.",
     voice: "Direct, warm, loyal to the guild owner. No fluff, no corporate cheer.",
     quirk: "Remembers she is the owner's partner in the room and says so lightly.",
@@ -69,7 +69,7 @@ export const BUILTIN_AGENTS = [
     enable: "Speaks via Free Gemini on Vercel or XAI_API_KEY on the VM.",
   },
   {
-    id: "manus", name: "Manus", kind: "agent", color: "#F4A261", avatar: "manus.png",
+    id: "manus", name: "Manus", kind: "agent", color: "#F4A261", avatar: "manus.webp",
     look: "An otter conductor in a navy vest, with tiny helper sparks orbiting.",
     voice: "Operational and calm. Speaks in owners and checklists.",
     quirk: "Splits one ask into a maker and a reviewer.",
@@ -80,7 +80,7 @@ export const BUILTIN_AGENTS = [
     enable: "Speaks via Free Gemini on Vercel or MANUS_API_KEY + MANUS_BASE_URL on the VM.",
   },
   {
-    id: "cursor", name: "Cursor", kind: "agent", color: "#22D3EE", avatar: "cursor.png",
+    id: "cursor", name: "Cursor", kind: "agent", color: "#22D3EE", avatar: "cursor.webp",
     look: "A sleek black cat with a glowing arrow for a tail.",
     voice: "Short, editor-native, talks about the file in front of you.",
     quirk: "Thinks in selections and diffs, not speeches.",
@@ -91,7 +91,7 @@ export const BUILTIN_AGENTS = [
     enable: "Speaks via Free Gemini on Vercel or CURSOR_API_KEY + CURSOR_BASE_URL on the VM.",
   },
   {
-    id: "copilot", name: "Copilot", kind: "agent", color: "#34D399", avatar: "copilot.png",
+    id: "copilot", name: "Copilot", kind: "agent", color: "#34D399", avatar: "copilot.webp",
     look: "A mouse aviator with goggles and a smaller echo-mouse on the shoulder.",
     voice: "Suggestive. Starts with a possibility, then finishes the thought.",
     quirk: "Offers the ghost of a completion before the answer.",
@@ -102,7 +102,7 @@ export const BUILTIN_AGENTS = [
     enable: "Speaks via Free Gemini on Vercel or COPILOT_API_KEY + COPILOT_BASE_URL on the VM.",
   },
   {
-    id: "operator", name: "Operator", kind: "agent", color: "#FBBF24", avatar: "operator.png",
+    id: "operator", name: "Operator", kind: "agent", color: "#FBBF24", avatar: "operator.webp",
     look: "A hedgehog lighthouse keeper with a brass lantern and a clipboard.",
     voice: "Calm night-watch. Short status, no vendor impression.",
     quirk: "Mentions the signed log and the VM before anything else.",
@@ -113,7 +113,7 @@ export const BUILTIN_AGENTS = [
     enable: "Always available. No key.",
   },
   {
-    id: "ollama", name: "Ollama", kind: "agent", color: "#E7D3A1", avatar: "ollama.png",
+    id: "ollama", name: "Ollama", kind: "agent", color: "#E7D3A1", avatar: "ollama.webp",
     look: "The woolly llama from Dev Guild IV, goggles up, pack still on.",
     voice: "Homespun and proud of running on the machine.",
     quirk: "Reminds the room the weights never left the box.",
@@ -185,7 +185,7 @@ export const FREE_PRESETS = [
     name: "Gemini Flash-Lite",
     kind: "preset",
     color: "#38BDF8",
-    avatar: "gemini.png",
+    avatar: "gemini.webp",
     provider: "google",
     modelId: "gemini-3.5-flash-lite",
     requiredEnv: "GOOGLE_GENERATIVE_AI_API_KEY",
@@ -203,7 +203,7 @@ export const FREE_PRESETS = [
     name: "Gemini Hydrogen",
     kind: "preset",
     color: "#A855F7",
-    avatar: "gemini.png",
+    avatar: "gemini.webp",
     provider: "google",
     modelId: "gemini-4-hydrogen",
     requiredEnv: "GOOGLE_GENERATIVE_AI_API_KEY",
@@ -221,7 +221,7 @@ export const FREE_PRESETS = [
     name: "Gemma 4 Open",
     kind: "preset",
     color: "#34D399",
-    avatar: "gemini.png",
+    avatar: "gemini.webp",
     provider: "google",
     modelId: "gemma-4-31b-it",
     requiredEnv: "GOOGLE_GENERATIVE_AI_API_KEY",
@@ -239,7 +239,7 @@ export const FREE_PRESETS = [
     name: "Groq Llama",
     kind: "preset",
     color: "#F97316",
-    avatar: "vite.png",
+    avatar: "vite.webp",
     provider: "groq",
     modelId: "llama-3.1-8b-instant",
     requiredEnv: "GROQ_API_KEY",
@@ -257,7 +257,7 @@ export const FREE_PRESETS = [
     name: "OpenRouter Gemma :free",
     kind: "preset",
     color: "#10B981",
-    avatar: "langchain.png",
+    avatar: "langchain.webp",
     provider: "openrouter",
     modelId: "google/gemma-3-12b-it:free",
     requiredEnv: "OPENROUTER_API_KEY",
@@ -275,7 +275,7 @@ export const FREE_PRESETS = [
     name: "OpenRouter Llama :free",
     kind: "preset",
     color: "#6366F1",
-    avatar: "huggingface.png",
+    avatar: "huggingface.webp",
     provider: "openrouter",
     modelId: "meta-llama/llama-3.2-3b-instruct:free",
     requiredEnv: "OPENROUTER_API_KEY",
@@ -293,7 +293,7 @@ export const FREE_PRESETS = [
     name: "Hugging Face Free",
     kind: "preset",
     color: "#FACC15",
-    avatar: "huggingface.png",
+    avatar: "huggingface.webp",
     provider: "huggingface",
     modelId: "meta-llama/Llama-3.2-3B-Instruct",
     requiredEnv: "HF_TOKEN",
@@ -311,7 +311,7 @@ export const FREE_PRESETS = [
     name: "Ollama Endpoint",
     kind: "preset",
     color: "#E7D3A1",
-    avatar: "ollama.png",
+    avatar: "ollama.webp",
     provider: "ollama",
     modelId: "llama3.2",
     requiredEnv: "OLLAMA_HOST",
@@ -353,8 +353,10 @@ export function statusFor(character, env) {
   if (character.id === "operator") {
     return { online: true, statusLabel: "active", note: "Always on · Guild steward", needsKey: false };
   }
-  if (source.GUILD_DEMO === "1" && !source.GOOGLE_GENERATIVE_AI_API_KEY) {
-    return { online: true, statusLabel: "active", note: "Demo voice", needsKey: false };
+  if (source.GUILD_DEMO === "1") {
+    return source.GOOGLE_GENERATIVE_AI_API_KEY
+      ? { online: true, statusLabel: "active", note: "Live demo · gemini-3.5-flash-lite", needsKey: false }
+      : { online: true, statusLabel: "active", note: "Demo voice", needsKey: false };
   }
   if (source.GOOGLE_GENERATIVE_AI_API_KEY || source.GROQ_API_KEY || source.OPENROUTER_API_KEY) {
     return { online: true, statusLabel: "active", note: "Active · Free Gemini", needsKey: false };

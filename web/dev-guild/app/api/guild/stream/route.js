@@ -8,6 +8,20 @@ import {
   readGroupPrefs,
 } from "../../../../lib/auth.js";
 import {
+  checkDemoAutoLimit,
+  checkDemoRateLimit,
+  clientIpFromRequest,
+  demoCookieHeader,
+  DEMO_AGENT_IDS,
+  DEMO_AUTO_OUTPUT_TOKENS,
+  DEMO_MAX_INPUT_CHARS,
+  DEMO_MAX_OUTPUT_TOKENS,
+  DEMO_MAX_TURNS,
+  DEMO_TOPICS,
+  isDemoMode,
+  isLiveDemo,
+} from "../../../../lib/demo.js";
+import {
   attemptsFor,
   demoStreamEvents,
   GEMMA,
@@ -145,24 +159,78 @@ export async function POST(request) {
     return Response.json({ error: "bad thread" }, { status: 400 });
   }
 
-  const text = String(body.text || "").trim();
+  const demo = isDemoMode();
+  const liveDemo = isLiveDemo();
+  if (demo && attachments.length > 0) {
+    return Response.json({ error: "Attachments are disabled in public demo mode." }, { status: 400 });
+  }
+
+  const autonomous = Boolean(demo && body.autonomous);
+  const rawText = String(body.text || "").trim();
+  const text = autonomous
+    ? String(body.topic || DEMO_TOPICS[0]).slice(0, 200)
+    : (demo ? rawText.slice(0, DEMO_MAX_INPUT_CHARS) : rawText);
   const files = attachments.map((item) => item.name);
-  if (!text && !files.length) {
+  if (!autonomous && !text && !files.length) {
     return Response.json({ error: "message is empty" }, { status: 400 });
   }
 
-  const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
-  const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
+  let rateInfo = null;
+  let autoInfo = null;
+  const ip = clientIpFromRequest(request);
+  if (demo && autonomous) {
+    autoInfo = checkDemoAutoLimit(ip);
+    if (!autoInfo.allowed) {
+      return Response.json(
+        {
+          error: "Autonomous demo budget reached for now. You can still message the guild directly!",
+          autonomousPaused: true,
+          retryAfterSeconds: autoInfo.retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(autoInfo.retryAfterSeconds),
+          },
+        },
+      );
+    }
+  } else if (demo) {
+    rateInfo = checkDemoRateLimit(ip, { cookieVal: jar.get("guild_demo_rl")?.value });
+    if (!rateInfo.allowed) {
+      return Response.json(
+        {
+          error: "Demo rate limit reached (10 messages/hour). Deploy your own free copy from the README for unlimited chat!",
+          retryAfterSeconds: rateInfo.retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rateInfo.retryAfterSeconds),
+            "X-RateLimit-Limit": String(rateInfo.limit),
+            "X-RateLimit-Remaining": "0",
+            "Set-Cookie": demoCookieHeader(rateInfo.cookieValue),
+          },
+        },
+      );
+    }
+  }
+
+  const cookieAgents = demo ? [] : decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
+  const cookiePrefs = demo ? null : readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
   const prefs = mergeGroupPrefs(cookiePrefs);
-  const [vmChars, vmThreads] = await Promise.all([
-    mirrorVm(token, "GET", "/v1/characters"),
-    mirrorVm(token, "GET", "/v1/threads"),
-  ]);
+  const [vmChars, vmThreads] = demo
+    ? [null, null]
+    : await Promise.all([
+        mirrorVm(token, "GET", "/v1/characters"),
+        mirrorVm(token, "GET", "/v1/threads"),
+      ]);
   const catalog = buildCatalog({
     env: process.env,
     customAgents: cookieAgents,
     vmCharacters: vmChars && vmChars.characters,
     includeSecrets: true,
+    includeDirectory: true,
     groupTitle: prefs.title,
   });
   const threads = listThreads({
@@ -176,28 +244,36 @@ export async function POST(request) {
     members: ["owner"],
   };
 
-  const senderId = auth.role === "owner" ? "owner" : (auth.participant && auth.participant.id) || "guest";
-  const senderName = auth.role === "owner" ? prefs.ownerName : (auth.participant && auth.participant.name) || "Guest";
-  const ownerMessage = appendLine({
-    threadId,
-    from: senderId,
-    senderName,
-    text: text || "Sent an attachment.",
-    files,
-    catalog,
-  });
-  await mirrorVm(token, "POST", `/v1/threads/${threadId}/messages`, {
-    text: text || "Sent an attachment.",
-    reply: "hold",
-    files,
-  });
+  const senderId = (auth.role === "owner" || auth.role === "demo") ? "owner" : (auth.participant && auth.participant.id) || "guest";
+  const senderName = auth.role === "demo"
+    ? "You"
+    : auth.role === "owner"
+      ? prefs.ownerName
+      : (auth.participant && auth.participant.name) || "Guest";
+  const ownerMessage = autonomous
+    ? null
+    : appendLine({
+        threadId,
+        from: senderId,
+        senderName,
+        text: text || "Sent an attachment.",
+        files,
+        catalog,
+      });
+  if (!demo) {
+    await mirrorVm(token, "POST", `/v1/threads/${threadId}/messages`, {
+      text: text || "Sent an attachment.",
+      reply: "hold",
+      files,
+    });
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       const send = (event, data) => controller.enqueue(encoder.encode(encode(event, data)));
       try {
-        send("message", { message: ownerMessage });
+        if (ownerMessage) send("message", { message: ownerMessage });
 
         const known = new Set(catalog.map((c) => c.id));
         const activeIds = new Set(catalog.filter((c) => c.online).map((c) => c.id));
@@ -206,17 +282,24 @@ export async function POST(request) {
           ? body.priorityIds
           : catalog.filter((c) => c.kind === "custom" && c.online).slice(-1).map((c) => c.id);
 
-        const queue = planSpeakers({
-          members: thread.members,
-          group: Boolean(thread.group),
-          text,
-          known,
-          activeIds,
-          priorityIds: customPriority,
-        });
+        let queue;
+        if (autonomous) {
+          const wanted = String(body.speakerId || "").trim();
+          const chosen = DEMO_AGENT_IDS.includes(wanted) && known.has(wanted) ? wanted : DEMO_AGENT_IDS[0];
+          queue = [chosen];
+        } else {
+          queue = planSpeakers({
+            members: thread.members,
+            group: Boolean(thread.group),
+            text,
+            known,
+            activeIds,
+            priorityIds: customPriority,
+          });
+        }
 
-        const demo = process.env.GUILD_DEMO === "1" && !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-        if (demo) {
+        const offlineDemo = demo && !liveDemo;
+        if (offlineDemo) {
           const from = queue[0] || "claude";
           const events = demoStreamEvents({ from, userText: text });
           let say = "";
@@ -235,7 +318,11 @@ export async function POST(request) {
             catalog,
           });
           send("message", { message: msg });
-          send("done", { via: "demo", messages: [msg] });
+          send("done", {
+            via: "demo",
+            messages: [msg],
+            rateLimit: rateInfo ? { limit: rateInfo.limit, remaining: rateInfo.remaining } : undefined,
+          });
           controller.close();
           return;
         }
@@ -254,11 +341,12 @@ export async function POST(request) {
           return;
         }
 
+        const maxTurns = autonomous ? 1 : (demo ? DEMO_MAX_TURNS : MAX_TURNS);
         const seen = new Set([senderId]);
         const committed = [];
         let turns = 0;
 
-        while (queue.length && turns < MAX_TURNS) {
+        while (queue.length && turns < maxTurns) {
           const id = queue.shift();
           if (!id || seen.has(id)) continue;
           seen.add(id);
@@ -297,12 +385,21 @@ export async function POST(request) {
           turns += 1;
           send("typing", { from: id });
 
+          const recentHistory = autonomous && Array.isArray(body.history)
+            ? body.history
+                .slice(-4)
+                .map((h) => `${String(h.name || h.from || "Agent").slice(0, 30)}: ${String(h.text || "").slice(0, 180)}`)
+                .join("\n")
+            : "";
+          const basePrompt = autonomous
+            ? `You are hanging out in the Dev Guild group chat while visitors watch. Topic: ${text}.${recentHistory ? `\nRecent lines:\n${recentHistory}\nReply naturally in 1-2 short iMessage sentences, staying in character.` : " Start a natural 1-2 sentence iMessage remark in character about this topic."}`
+            : text;
           const contextLines = committed.length
-            ? `${text}\n\n(Just said in this round:\n${committed
+            ? `${basePrompt}\n\n(Just said in this round:\n${committed
                 .filter((m) => m.kind !== "system")
                 .map((m) => `${m.name}: ${m.text}`)
                 .join("\n")})`
-            : text;
+            : basePrompt;
 
           let skipGoogle = false;
           let spoken = false;
@@ -313,19 +410,21 @@ export async function POST(request) {
             let say = "";
             let thought = "";
             try {
-              const useTools = attempt.provider === "google" && attempt.modelId !== GEMMA;
+              const useTools = !demo && attempt.provider === "google" && attempt.modelId !== GEMMA;
               const req = providerRequest({
                 ...attempt,
                 system: character.system,
                 character,
                 messages: modelMessages({ text: contextLines, attachments }),
                 tools: useTools ? buildStandaloneTools({ threadId, from: id, known, catalog, token, send }) : undefined,
+                maxOutputTokens: autonomous ? DEMO_AUTO_OUTPUT_TOKENS : (demo ? DEMO_MAX_OUTPUT_TOKENS : undefined),
               });
               const result = await streamText({
                 model: languageModel(attempt),
                 system: req.system,
                 messages: req.messages,
                 tools: req.tools,
+                maxOutputTokens: req.maxOutputTokens,
                 providerOptions: req.providerOptions,
                 stopWhen: useTools ? stepCountIs(3) : undefined,
                 maxRetries: 0,
@@ -362,9 +461,11 @@ export async function POST(request) {
             });
             committed.push(msg);
             send("message", { message: msg });
-            await mirrorVm(token, "POST", `/v1/threads/${threadId}/lines`, {
-              from: id, kind: "message", text: say.trim(), reasoning: summary,
-            });
+            if (!demo) {
+              await mirrorVm(token, "POST", `/v1/threads/${threadId}/lines`, {
+                from: id, kind: "message", text: say.trim(), reasoning: summary,
+              });
+            }
             if (thread.group) {
               for (const m of parseMentions(say, known)) {
                 if (!seen.has(m)) queue.push(m);
@@ -387,12 +488,16 @@ export async function POST(request) {
           }
         }
 
-        if (!committed.some((m) => m.kind !== "system") && hasVmBackend()) {
+        if (!demo && !committed.some((m) => m.kind !== "system") && hasVmBackend()) {
           await mirrorVm(token, "POST", `/v1/threads/${threadId}/respond`, {});
           send("fallback", { reason: "vm" });
         }
 
-        send("done", { via: committed.some((m) => m.kind !== "system") ? "gemini" : "fallback", messages: committed });
+        send("done", {
+          via: committed.some((m) => m.kind !== "system") ? (demo ? "demo-live" : "gemini") : "fallback",
+          messages: committed,
+          rateLimit: rateInfo ? { limit: rateInfo.limit, remaining: rateInfo.remaining } : undefined,
+        });
       } catch {
         send("fallback", { reason: "error" });
         send("done", { via: "error", messages: [] });
@@ -401,7 +506,11 @@ export async function POST(request) {
     },
   });
 
-  return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
-  });
+  const headers = { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" };
+  if (rateInfo) {
+    headers["X-RateLimit-Limit"] = String(rateInfo.limit);
+    headers["X-RateLimit-Remaining"] = String(rateInfo.remaining);
+    if (rateInfo.cookieValue) headers["Set-Cookie"] = demoCookieHeader(rateInfo.cookieValue);
+  }
+  return new Response(stream, { headers });
 }

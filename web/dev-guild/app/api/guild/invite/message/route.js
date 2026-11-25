@@ -20,7 +20,12 @@ import {
 
 export const dynamic = "force-dynamic";
 
+import { isDemoMode } from "../../../../../lib/demo.js";
+
 export async function GET(request) {
+  if (isDemoMode()) {
+    return NextResponse.json({ error: "Invites are disabled in public demo mode." }, { status: 401 });
+  }
   const token = getOwnerToken();
   const jar = await cookies();
   const url = new URL(request.url);
@@ -37,6 +42,9 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  if (isDemoMode()) {
+    return NextResponse.json({ error: "Invites are disabled in public demo mode." }, { status: 401 });
+  }
   const token = getOwnerToken();
   const jar = await cookies();
   let body = {};

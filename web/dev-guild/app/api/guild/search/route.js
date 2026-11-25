@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { checkGuildAuth, getOwnerToken } from "../../../../lib/auth.js";
+import { isDemoMode } from "../../../../lib/demo.js";
 import { searchHistory } from "../../../../lib/models.js";
 import { getMessages, hasVmBackend, vmFetch } from "../../../../lib/store.js";
 
@@ -16,6 +17,9 @@ export async function GET(request) {
   });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+  if (isDemoMode()) {
+    return NextResponse.json({ via: "demo", messages: [] });
   }
   const url = new URL(request.url);
   const thread = url.searchParams.get("thread") || "guild";

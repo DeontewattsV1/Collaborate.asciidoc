@@ -67,6 +67,11 @@ export function isRateLimit(err) {
 // entries must end in :free.
 export function attemptsFor(env, characterId, character) {
   const source = env || {};
+  if (String(source.GUILD_DEMO || "").trim() === "1") {
+    return String(source.GOOGLE_GENERATIVE_AI_API_KEY || "").trim()
+      ? [{ provider: "google", modelId: FLASH_LITE }]
+      : [];
+  }
   if (character && character.kind === "custom") {
     if (character.endpointType === "openai") {
       if (character.baseUrl && character.modelId && character.apiKey) {
@@ -157,7 +162,7 @@ export function googleThinking(id) {
   return { thinkingConfig: { includeThoughts: true, thinkingLevel } };
 }
 
-export function providerRequest({ provider, modelId, system, prompt, character, messages, tools }) {
+export function providerRequest({ provider, modelId, system, prompt, character, messages, tools, maxOutputTokens }) {
   const request = {
     provider,
     modelId,
@@ -167,6 +172,12 @@ export function providerRequest({ provider, modelId, system, prompt, character, 
   if (messages) request.messages = messages;
   else request.prompt = prompt;
   if (tools) request.tools = tools;
+  if (typeof maxOutputTokens === "number" && maxOutputTokens > 0) {
+    request.maxOutputTokens = maxOutputTokens;
+    if (provider === "google" && maxOutputTokens <= 250) {
+      request.providerOptions = { google: { thinkingConfig: { includeThoughts: false, thinkingLevel: "minimal" } } };
+    }
+  }
   if (provider !== "google" || modelId === GEMMA) delete request.providerOptions;
   return request;
 }
@@ -248,6 +259,7 @@ export async function completeWithProvider({
   prompt,
   messages,
   tools,
+  maxOutputTokens,
   run,
 }) {
   const attempts = attemptsFor(env, character && character.id, character);
@@ -256,7 +268,7 @@ export async function completeWithProvider({
   return runFreeAttempts({
     attempts,
     run: async (attempt) => {
-      const request = providerRequest({ ...attempt, system, prompt, character, messages, tools });
+      const request = providerRequest({ ...attempt, system, prompt, character, messages, tools, maxOutputTokens });
       try {
         const result = await run(request);
         const text = await textOf(result, Boolean(result && result.textStream));

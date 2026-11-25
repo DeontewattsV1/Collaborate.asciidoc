@@ -351,3 +351,53 @@ test("invite code validates strictly against owner token", () => {
   assert.equal(checkGuildAuth({ jar: null, token, inviteParam: code }).ok, true);
   assert.equal(checkGuildAuth({ jar: null, token, inviteParam: "bad" }).ok, false);
 });
+import { appendLine } from "./store.js";
+import { directoryCharacters } from "./directory.js";
+import { checkDemoAutoLimit, checkDemoRateLimit, DEMO_AGENT_IDS } from "./demo.js";
+
+test("directoryCharacters provides ~500 contacts across 17 sections with webp coding-agent avatars", () => {
+  const dir = directoryCharacters({ GOOGLE_GENERATIVE_AI_API_KEY: "test" });
+  assert.ok(dir.length >= 450, `expected >= 450 directory entries, got ${dir.length}`);
+  const coding = dir.filter((c) => c.section === "AI coding agents");
+  assert.equal(coding.length, 75);
+  for (const agent of coding) {
+    assert.ok(agent.avatar && agent.avatar.endsWith(".webp"), `expected .webp avatar for ${agent.id}`);
+    assert.equal(agent.isPersona, true);
+    assert.equal(agent.online, true);
+  }
+  const full = buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "test" }, includeDirectory: true });
+  assert.ok(full.length >= 500, `expected >= 500 total catalog contacts, got ${full.length}`);
+});
+
+test("GUILD_DEMO=1 restricts catalog, forces gemini-3.5-flash-lite, and never persists messages", () => {
+  const demoEnv = { GUILD_DEMO: "1", GOOGLE_GENERATIVE_AI_API_KEY: "demo-key" };
+  const demoCatalog = buildCatalog({ env: demoEnv, includeDirectory: true });
+  assert.deepEqual(demoCatalog.map((c) => c.id).sort(), [...DEMO_AGENT_IDS].sort());
+
+  const attempts = attemptsFor(demoEnv, "claude");
+  assert.deepEqual(attempts, [{ provider: "google", modelId: FLASH_LITE }]);
+
+  assert.equal(checkGuildAuth({ jar: null, token: "", env: demoEnv }).ok, true);
+  assert.equal(checkGuildAuth({ jar: null, token: "", env: demoEnv }).role, "demo");
+
+  const line = appendLine({ threadId: "guild", from: "owner", name: "Visitor", text: "Hi demo", env: demoEnv });
+  assert.equal(line.text, "Hi demo");
+  assert.deepEqual(getMessages({ threadId: "guild", env: demoEnv }), []);
+});
+
+test("demo rate limits enforce 10 user msgs/hr and autonomous IP/daily budgets", () => {
+  const ip = `203.0.113.${Math.floor(Math.random() * 200) + 10}`;
+  for (let i = 0; i < 10; i += 1) {
+    const r = checkDemoRateLimit(ip, { now: 1000000 + i * 100 });
+    assert.equal(r.allowed, true);
+  }
+  const blocked = checkDemoRateLimit(ip, { now: 1002000 });
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.remaining, 0);
+
+  const autoIp = `198.51.100.${Math.floor(Math.random() * 200) + 10}`;
+  for (let i = 0; i < 30; i += 1) {
+    assert.equal(checkDemoAutoLimit(autoIp, { now: 2000000 + i * 100 }).allowed, true);
+  }
+  assert.equal(checkDemoAutoLimit(autoIp, { now: 2004000 }).allowed, false);
+});

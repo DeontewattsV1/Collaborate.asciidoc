@@ -1,8 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Avatar, DemoSheet, PhoneFrame, ProfileSheet, timeLabel } from "./components";
 
 const STARTER_IDS = ["claude", "grok", "gemini", "codex", "tay"];
+const DEMO_CAST_IDS = ["claude", "grok", "chatgpt", "gemini", "tay"];
+const DEMO_TOPICS = [
+  "keeping multi-agent PRs conflict-free with Collaborate-Claim paths",
+  "why agentterm writes a SHA-256 hash-chained log for every guild message",
+  "routing Dev Guild replies through free Gemini models with zero credit card",
+  "making an open-source multi-agent group chat feel like native iOS Messages",
+  "keeping diffs narrow so go-verify and scripts/check.sh stay green",
+];
+const DEMO_STARTERS = [
+  "Hey @grok and @claude, why use Collaborate?",
+  "@tay what can this group chat do?",
+  "Debate monoliths vs microservices in 1 line each",
+];
 
 async function api(path, options) {
   const res = await fetch(path, {
@@ -13,25 +27,10 @@ async function api(path, options) {
   if (!res.ok) {
     const error = new Error(data.error || "The guild didn't answer.");
     error.status = res.status;
+    error.data = data;
     throw error;
   }
   return data;
-}
-
-function timeLabel(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const now = new Date();
-  const same = d.toDateString() === now.toDateString();
-  const clock = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return same ? clock : `${d.toLocaleDateString([], { weekday: "short" })} ${clock}`;
-}
-
-function Avatar({ id, avatar, size = "" }) {
-  const cls = size === "lg" ? "avatar-lg" : `avatar ${size}`;
-  const file = avatar || `${id || "claude"}.png`;
-  const src = file.startsWith("/") ? file : `/avatars/${file}`;
-  return <img className={cls} alt="" src={src} />;
 }
 
 function mergeMessages(prev, incoming) {
@@ -50,7 +49,8 @@ function mergeMessages(prev, incoming) {
   });
 }
 
-function readCachedMessages(thread) {
+function readCachedMessages(thread, isDemo) {
+  if (isDemo) return [];
   try {
     const raw = window.localStorage.getItem(`devguild_msgs_v1_${thread}`);
     const parsed = raw ? JSON.parse(raw) : [];
@@ -60,7 +60,8 @@ function readCachedMessages(thread) {
   }
 }
 
-function writeCachedMessages(thread, list) {
+function writeCachedMessages(thread, list, isDemo) {
+  if (isDemo) return;
   try {
     window.localStorage.setItem(`devguild_msgs_v1_${thread}`, JSON.stringify((list || []).slice(-120)));
   } catch {
@@ -71,6 +72,10 @@ function writeCachedMessages(thread, list) {
 export default function App() {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
+  const [liveDemo, setLiveDemo] = useState(false);
+  const [rateInfo, setRateInfo] = useState(null);
+  const [autoPlay, setAutoPlay] = useState(true);
   const [role, setRole] = useState("owner");
   const [ownerName, setOwnerName] = useState("Owner");
   const [inviteParam, setInviteParam] = useState("");
@@ -85,25 +90,27 @@ export default function App() {
   const [active, setActive] = useState("guild");
   const [sidebarTab, setSidebarTab] = useState("chats");
   const [contactFilter, setContactFilter] = useState("");
-  const [mobileList, setMobileList] = useState(true);
+  const [sectionFilter, setSectionFilter] = useState("All");
+  const [visibleContactsCount, setVisibleContactsCount] = useState(60);
+  const [mobileList, setMobileList] = useState(false);
 
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const [live, setLive] = useState(null);
   const [files, setFiles] = useState([]);
+  const [showSearch, setShowSearch] = useState(false);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState(null);
   const [profile, setProfile] = useState(null);
   const [composing, setComposing] = useState(false);
   const [error, setError] = useState("");
 
-  const [groupSheet, setGroupSheet] = useState(null); // null | "members" | "settings" | "custom" | "invite"
+  const [groupSheet, setGroupSheet] = useState(null);
   const [memberFilter, setMemberFilter] = useState("");
   const [inviteInfo, setInviteInfo] = useState(null);
   const [copied, setCopied] = useState("");
 
-  // First-run group setup & settings state
   const [setupTitle, setSetupTitle] = useState("Dev Guild");
   const [setupOwner, setSetupOwner] = useState("");
   const [setupMembers, setSetupMembers] = useState([]);
@@ -111,7 +118,6 @@ export default function App() {
   const [setupBusy, setSetupBusy] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
 
-  // Custom agent form state
   const [customName, setCustomName] = useState("");
   const [customPersona, setCustomPersona] = useState("");
   const [customRole, setCustomRole] = useState("");
@@ -124,12 +130,17 @@ export default function App() {
   const [customMsg, setCustomMsg] = useState("");
 
   const scroller = useRef(null);
+  const sectionRefs = useRef({});
   const after = useRef(0);
+  const autoTurnIdx = useRef(0);
+  const autoTopicIdx = useRef(0);
+  const pendingRef = useRef(false);
+  const messagesRef = useRef([]);
 
-  const guildThread = useMemo(
-    () => threads.find((t) => t.id === "guild") || threads[0],
-    [threads],
-  );
+  useEffect(() => { pendingRef.current = pending; }, [pending]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
+  const guildThread = useMemo(() => threads.find((t) => t.id === "guild") || threads[0], [threads]);
   const effectiveOwnerName = (guildThread && guildThread.ownerName) || ownerName || "Owner";
 
   const byId = useMemo(() => {
@@ -138,10 +149,7 @@ export default function App() {
     return map;
   }, [characters, effectiveOwnerName]);
 
-  const groupMemberSet = useMemo(
-    () => new Set((guildThread && guildThread.members) || []),
-    [guildThread],
-  );
+  const groupMemberSet = useMemo(() => new Set((guildThread && guildThread.members) || []), [guildThread]);
 
   const loadRoster = useCallback(async () => {
     const [cast, convos] = await Promise.all([
@@ -162,14 +170,15 @@ export default function App() {
     }
   }, []);
 
-  const loadMessages = useCallback(async (thread, reset) => {
+  const loadMessages = useCallback(async (thread, reset, isDemo) => {
+    if (isDemo) return [];
     const start = reset ? 0 : after.current;
     const data = await api(`/api/guild/v1/threads/${thread}/messages?after=${start}`);
     const incoming = data.messages || [];
     setMessages((prev) => {
-      const base = reset ? mergeMessages(readCachedMessages(thread), prev) : prev;
+      const base = reset ? mergeMessages(readCachedMessages(thread, isDemo), prev) : prev;
       const next = mergeMessages(base, incoming);
-      writeCachedMessages(thread, next);
+      writeCachedMessages(thread, next, isDemo);
       after.current = next.reduce((m, row) => Math.max(m, row.seq || 0), 0);
       return next;
     });
@@ -179,8 +188,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      const params = new URLSearchParams(window.location.search);
-      const inv = params.get("invite") || "";
+      const inv = new URLSearchParams(window.location.search).get("invite") || "";
       if (inv) setInviteParam(inv);
     } catch {
       // ignore
@@ -188,20 +196,19 @@ export default function App() {
     api("/api/session")
       .then((data) => {
         setAuthed(!!data.ok);
+        setDemoMode(Boolean(data.demo));
+        setLiveDemo(Boolean(data.liveDemo));
+        if (data.rateLimit) setRateInfo(data.rateLimit);
         if (data.role) setRole(data.role);
         if (data.participant && data.participant.name) {
           setOwnerName(data.participant.name);
           setSetupOwner(data.participant.name);
         }
-        if (data.group && data.group.title) {
-          setSetupTitle(data.group.title);
-        }
+        if (data.group && data.group.title) setSetupTitle(data.group.title);
       })
       .catch(() => setAuthed(false))
       .finally(() => setReady(true));
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
-    }
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -213,20 +220,123 @@ export default function App() {
     if (!authed || !active) return;
     after.current = 0;
     setPending(false);
-    const cached = readCachedMessages(active);
-    if (cached.length) setMessages(cached);
-    else setMessages([]);
-    loadMessages(active, true).catch((err) => setError(err.message));
-    const timer = setInterval(() => {
-      loadMessages(active, false).catch(() => {});
-    }, 2500);
+    if (demoMode) {
+      setMessages([]);
+      return;
+    }
+    const cached = readCachedMessages(active, false);
+    setMessages(cached.length ? cached : []);
+    loadMessages(active, true, false).catch((err) => setError(err.message));
+    const timer = setInterval(() => loadMessages(active, false, false).catch(() => {}), 2500);
     return () => clearInterval(timer);
-  }, [authed, active, loadMessages]);
+  }, [authed, active, demoMode, loadMessages]);
 
   useEffect(() => {
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, pending, live, active]);
+
+  const applyEvent = useCallback((block) => {
+    const name = (block.match(/^event: (.+)$/m) || [])[1];
+    const raw = (block.match(/^data: (.+)$/m) || [])[1];
+    if (!name || !raw) return;
+    const data = JSON.parse(raw);
+    if (name === "typing") setLive({ from: data.from, text: "", reasoning: "" });
+    if (name === "delta") {
+      setLive((prev) => ({ from: data.from, text: ((prev && prev.text) || "") + data.text, reasoning: prev && prev.reasoning }));
+    }
+    if (name === "reasoning") setLive((prev) => ({ ...(prev || { from: data.from, text: "" }), reasoning: data.summary }));
+    if ((name === "tool" || name === "card" || name === "message") && data.message) {
+      if (name === "message") setLive((prev) => (prev && prev.from === data.message.from ? null : prev));
+      setMessages((prev) => {
+        const next = mergeMessages(prev, [data.message]);
+        writeCachedMessages(active, next, demoMode);
+        return next;
+      });
+    }
+    if (name === "done") {
+      setLive(null);
+      if (data.rateLimit) setRateInfo(data.rateLimit);
+      if (Array.isArray(data.messages) && data.messages.length) {
+        setMessages((prev) => {
+          const next = mergeMessages(prev, data.messages);
+          writeCachedMessages(active, next, demoMode);
+          return next;
+        });
+      }
+    }
+    if (name === "fallback") setPending(true);
+  }, [active, demoMode]);
+
+  const triggerAutonomousTurn = useCallback(async () => {
+    if (!demoMode || !autoPlay || pendingRef.current) return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    if (active !== "guild") return;
+
+    const speakerId = DEMO_CAST_IDS[autoTurnIdx.current % DEMO_CAST_IDS.length];
+    autoTurnIdx.current += 1;
+    if (autoTurnIdx.current % DEMO_CAST_IDS.length === 0) {
+      autoTopicIdx.current = (autoTopicIdx.current + 1) % DEMO_TOPICS.length;
+    }
+    const topic = DEMO_TOPICS[autoTopicIdx.current];
+    const history = (messagesRef.current || [])
+      .filter((m) => m && m.kind !== "system" && m.text)
+      .slice(-4)
+      .map((m) => ({ from: m.from, name: m.name, text: m.text }));
+
+    setPending(true);
+    setLive(null);
+    try {
+      const res = await fetch("/api/guild/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thread: "guild", autonomous: true, speakerId, topic, history }),
+      });
+      if (res.status === 429) { setAutoPlay(false); return; }
+      if (!res.ok || !res.body) return;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const step = await reader.read();
+        if (step.done) break;
+        buf += decoder.decode(step.value, { stream: true });
+        const blocks = buf.split("\n\n");
+        buf = blocks.pop() || "";
+        for (const block of blocks) applyEvent(block);
+      }
+    } catch {
+      // stay quiet on transient network error
+    } finally {
+      setLive(null);
+      setPending(false);
+    }
+  }, [demoMode, autoPlay, active, applyEvent]);
+
+  useEffect(() => {
+    if (!authed || !demoMode || !autoPlay || active !== "guild") return;
+    let timerId;
+    let cancelled = false;
+    const schedule = (delayMs) => {
+      clearTimeout(timerId);
+      timerId = setTimeout(async () => {
+        if (cancelled) return;
+        await triggerAutonomousTurn();
+        if (!cancelled && autoPlay) schedule(22000 + Math.floor(Math.random() * 14000));
+      }, delayMs);
+    };
+    schedule((messagesRef.current || []).length === 0 ? 1800 : 25000);
+    const onVis = () => {
+      if (document.visibilityState === "visible" && autoPlay) schedule(12000);
+      else clearTimeout(timerId);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      clearTimeout(timerId);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [authed, demoMode, autoPlay, active, triggerAutonomousTurn]);
 
   async function signIn(event) {
     event.preventDefault();
@@ -236,6 +346,7 @@ export default function App() {
       setRole(res.role || "owner");
       setAuthed(true);
       setPass("");
+      setMobileList(false);
     } catch (err) {
       setLoginError(err.message);
     }
@@ -256,58 +367,11 @@ export default function App() {
       });
       setRole("invite");
       setAuthed(true);
-      if (res.messages) {
-        setMessages((prev) => mergeMessages(prev, res.messages));
-      }
+      if (res.messages) setMessages((prev) => mergeMessages(prev, res.messages));
       setMobileList(false);
     } catch (err) {
       setLoginError(err.message);
     }
-  }
-
-  function applyEvent(block) {
-    const name = (block.match(/^event: (.+)$/m) || [])[1];
-    const raw = (block.match(/^data: (.+)$/m) || [])[1];
-    if (!name || !raw) return;
-    const data = JSON.parse(raw);
-    if (name === "typing") setLive({ from: data.from, text: "", reasoning: "" });
-    if (name === "delta") {
-      setLive((prev) => ({ from: data.from, text: ((prev && prev.text) || "") + data.text, reasoning: prev && prev.reasoning }));
-    }
-    if (name === "reasoning") setLive((prev) => ({ ...(prev || { from: data.from, text: "" }), reasoning: data.summary }));
-    if (name === "tool" && data.message) {
-      setMessages((prev) => {
-        const next = mergeMessages(prev, [data.message]);
-        writeCachedMessages(active, next);
-        return next;
-      });
-    }
-    if (name === "card" && data.message) {
-      setMessages((prev) => {
-        const next = mergeMessages(prev, [data.message]);
-        writeCachedMessages(active, next);
-        return next;
-      });
-    }
-    if (name === "message" && data.message) {
-      setLive((prev) => (prev && prev.from === data.message.from ? null : prev));
-      setMessages((prev) => {
-        const next = mergeMessages(prev, [data.message]);
-        writeCachedMessages(active, next);
-        return next;
-      });
-    }
-    if (name === "done") {
-      setLive(null);
-      if (Array.isArray(data.messages) && data.messages.length) {
-        setMessages((prev) => {
-          const next = mergeMessages(prev, data.messages);
-          writeCachedMessages(active, next);
-          return next;
-        });
-      }
-    }
-    if (name === "fallback") setPending(true);
   }
 
   async function filePayload(list) {
@@ -324,11 +388,11 @@ export default function App() {
     return out;
   }
 
-  async function send() {
-    const body = text.trim();
+  async function send(overrideText) {
+    const body = String(overrideText !== undefined ? overrideText : text).trim();
     if ((!body && files.length === 0) || pending) return;
-    setText("");
-    const chosen = files;
+    if (overrideText === undefined) setText("");
+    const chosen = demoMode ? [] : files;
     setFiles([]);
     setPending(true);
     setLive(null);
@@ -344,6 +408,11 @@ export default function App() {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "The guild didn't answer.");
       }
+      const hdrRemaining = res.headers.get("X-RateLimit-Remaining");
+      const hdrLimit = res.headers.get("X-RateLimit-Limit");
+      if (hdrRemaining !== null && hdrLimit !== null) {
+        setRateInfo({ limit: Number(hdrLimit), remaining: Number(hdrRemaining) });
+      }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
@@ -356,8 +425,10 @@ export default function App() {
         for (const block of blocks) applyEvent(block);
       }
       setLive(null);
-      await loadMessages(active, false);
-      await loadRoster();
+      if (!demoMode) {
+        await loadMessages(active, false, false);
+        await loadRoster();
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -367,20 +438,25 @@ export default function App() {
 
   async function searchHistory(event) {
     event.preventDefault();
-    if (!query.trim()) {
-      setHits(null);
+    const q = query.trim();
+    if (!q) { setHits(null); return; }
+    if (demoMode) {
+      const lower = q.toLowerCase();
+      setHits(messages.filter((m) => `${m.name || ""} ${m.text || ""}`.toLowerCase().includes(lower)).slice(-5));
       return;
     }
-    const data = await api(`/api/guild/search?thread=${encodeURIComponent(active)}&q=${encodeURIComponent(query)}`);
+    const data = await api(`/api/guild/search?thread=${encodeURIComponent(active)}&q=${encodeURIComponent(q)}`);
     setHits(data.messages || []);
   }
 
   async function openDM(id) {
-    const thread = await api("/api/guild/v1/threads", {
-      method: "POST",
-      body: JSON.stringify({ with: id }),
-    });
-    await loadRoster();
+    const thread = await api("/api/guild/v1/threads", { method: "POST", body: JSON.stringify({ with: id }) });
+    if (demoMode) {
+      setThreads((prev) => (prev.some((t) => t.id === thread.id) ? prev : [...prev, thread]));
+      setMessages([]);
+    } else {
+      await loadRoster();
+    }
     setActive(thread.id);
     setComposing(false);
     setSidebarTab("chats");
@@ -389,17 +465,17 @@ export default function App() {
   }
 
   async function toggleGroupMember(id) {
-    const inGroup = groupMemberSet.has(id);
+    if (demoMode) return;
     await api("/api/guild/v1/group/members", {
       method: "POST",
-      body: JSON.stringify({ id, action: inGroup ? "remove" : "add" }),
+      body: JSON.stringify({ id, action: groupMemberSet.has(id) ? "remove" : "add" }),
     });
     await loadRoster();
   }
 
   async function completeGroupSetup(event, startEmpty = false) {
     if (event) event.preventDefault();
-    if (setupBusy) return;
+    if (setupBusy || demoMode) return;
     setSetupBusy(true);
     setError("");
     try {
@@ -414,7 +490,7 @@ export default function App() {
         }),
       });
       await loadRoster();
-      await loadMessages("guild", true);
+      await loadMessages("guild", true, false);
       setActive("guild");
       setMobileList(false);
     } catch (err) {
@@ -426,17 +502,13 @@ export default function App() {
 
   async function saveGroupSettings(event) {
     event.preventDefault();
-    if (setupBusy) return;
+    if (setupBusy || demoMode) return;
     setSetupBusy(true);
     setSettingsMsg("");
     try {
       await api("/api/guild/v1/group", {
         method: "POST",
-        body: JSON.stringify({
-          title: setupTitle.trim() || "Dev Guild",
-          ownerName: setupOwner.trim() || "Owner",
-          setupDone: true,
-        }),
+        body: JSON.stringify({ title: setupTitle.trim() || "Dev Guild", ownerName: setupOwner.trim() || "Owner", setupDone: true }),
       });
       await loadRoster();
       setSettingsMsg("Group settings saved.");
@@ -451,10 +523,9 @@ export default function App() {
     setGroupSheet(tab);
     setCustomMsg("");
     setSettingsMsg("");
-    if (tab === "invite" && role === "owner" && !inviteInfo) {
+    if (tab === "invite" && role === "owner" && !demoMode && !inviteInfo) {
       try {
-        const data = await api("/api/guild/invite");
-        setInviteInfo(data);
+        setInviteInfo(await api("/api/guild/invite"));
       } catch (err) {
         setError(err.message);
       }
@@ -463,7 +534,7 @@ export default function App() {
 
   async function submitCustomAgent(event) {
     event.preventDefault();
-    if (!customName.trim() || customBusy) return;
+    if (!customName.trim() || customBusy || demoMode) return;
     setCustomBusy(true);
     setCustomMsg("");
     try {
@@ -509,656 +580,602 @@ export default function App() {
   }
 
   const thread = threads.find((t) => t.id === active) || threads[0];
-  const demo = characters.some((c) => (c.note || "").startsWith("Demo voice"));
   const mention = text.match(/(^|\s)@([a-z0-9-]*)$/);
   const suggestions = mention
     ? characters.filter((c) => c.id.includes(mention[2]) || c.name.toLowerCase().includes(mention[2])).slice(0, 6)
     : [];
 
+  const sectionNames = useMemo(() => {
+    const names = ["All", "Guild Agents", "Free Public AI Presets"];
+    if (characters.some((c) => c.kind === "custom")) names.push("Custom & Invited");
+    const seen = new Set(names);
+    for (const c of characters) {
+      if (c.section && !seen.has(c.section)) { seen.add(c.section); names.push(c.section); }
+    }
+    if (characters.some((c) => c.kind === "tool")) names.push("Tool Mascots");
+    return names;
+  }, [characters]);
+
   const filteredContacts = useMemo(() => {
     const q = contactFilter.trim().toLowerCase();
-    return q
-      ? characters.filter((c) =>
-          c.name.toLowerCase().includes(q)
-          || c.id.toLowerCase().includes(q)
-          || (c.role || "").toLowerCase().includes(q),
-        )
-      : characters;
-  }, [characters, contactFilter]);
+    return characters.filter((c) => {
+      if (sectionFilter !== "All") {
+        if (sectionFilter === "Guild Agents" && c.kind !== "agent") return false;
+        if (sectionFilter === "Free Public AI Presets" && c.kind !== "preset") return false;
+        if (sectionFilter === "Custom & Invited" && c.kind !== "custom") return false;
+        if (sectionFilter === "Tool Mascots" && c.kind !== "tool") return false;
+        if (
+          !["Guild Agents", "Free Public AI Presets", "Custom & Invited", "Tool Mascots"].includes(sectionFilter) &&
+          c.section !== sectionFilter
+        ) return false;
+      }
+      if (!q) return true;
+      return (
+        c.name.toLowerCase().includes(q) ||
+        c.id.toLowerCase().includes(q) ||
+        (c.role || "").toLowerCase().includes(q) ||
+        (c.section || "").toLowerCase().includes(q) ||
+        (c.persona || "").toLowerCase().includes(q)
+      );
+    });
+  }, [characters, contactFilter, sectionFilter]);
 
-  const contactGroups = useMemo(() => ([
-    { key: "agents", label: "Guild Agents", items: filteredContacts.filter((c) => c.kind === "agent") },
-    { key: "presets", label: "Free Public AI Presets", items: filteredContacts.filter((c) => c.kind === "preset") },
-    { key: "custom", label: "Custom & Invited Agents", items: filteredContacts.filter((c) => c.kind === "custom") },
-    { key: "tools", label: "Tool Mascots", items: filteredContacts.filter((c) => c.kind === "tool") },
-  ]).filter((g) => g.items.length > 0), [filteredContacts]);
+  useEffect(() => { setVisibleContactsCount(60); }, [contactFilter, sectionFilter]);
+
+  const visibleContacts = useMemo(() => filteredContacts.slice(0, visibleContactsCount), [filteredContacts, visibleContactsCount]);
+
+  const contactGroups = useMemo(() => {
+    const groups = new Map();
+    const labelFor = (c) => {
+      if (c.kind === "agent") return "Guild Agents";
+      if (c.kind === "preset") return "Free Public AI Presets";
+      if (c.kind === "custom") return "Custom & Invited Agents";
+      if (c.kind === "tool") return "Tool Mascots";
+      return c.section || "Directory";
+    };
+    for (const c of visibleContacts) {
+      const label = labelFor(c);
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label).push(c);
+    }
+    return Array.from(groups.entries()).map(([label, items]) => ({ key: label, label, items }));
+  }, [visibleContacts]);
+
+  const railTokens = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const g of contactGroups) {
+      const ch = g.label[0].toUpperCase();
+      if (!seen.has(ch)) { seen.add(ch); out.push({ ch, key: g.key }); }
+    }
+    return out;
+  }, [contactGroups]);
 
   const filteredMembers = useMemo(() => {
     const q = memberFilter.trim().toLowerCase();
-    return q
-      ? characters.filter((c) => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q))
+    const base = q
+      ? characters.filter((c) => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || (c.section || "").toLowerCase().includes(q))
       : characters;
+    return base.slice(0, 60);
   }, [characters, memberFilter]);
 
   const filteredSetupMembers = useMemo(() => {
     const q = setupFilter.trim().toLowerCase();
-    return q
+    const base = q
       ? characters.filter((c) => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || (c.role || "").toLowerCase().includes(q))
       : characters;
+    return base.slice(0, 60);
   }, [characters, setupFilter]);
 
-  if (!ready) return <main className="login" />;
+  if (!ready) return <PhoneFrame><main className="login" /></PhoneFrame>;
+
   if (!authed) {
     if (inviteParam) {
       return (
-        <main className="login">
-          <form onSubmit={joinWithInvite}>
-            <img className="avatar-lg" alt="" src="/avatars/tay.png" />
-            <h1>Join Group Chat</h1>
-            <p>You were invited to the group chat. Pick your name (or agent persona) to join.</p>
-            <input
-              autoFocus
-              placeholder="Your name or agent name"
-              value={guestName}
-              onChange={(e) => setGuestName(e.target.value)}
-              aria-label="Display name"
-            />
-            <div className="seg">
-              <button type="button" className={guestKind === "person" ? "active" : ""} onClick={() => setGuestKind("person")}>Person</button>
-              <button type="button" className={guestKind === "agent" ? "active" : ""} onClick={() => setGuestKind("agent")}>AI Agent</button>
-            </div>
-            {guestKind === "agent" ? (
-              <input
-                placeholder="Agent persona (optional)"
-                value={guestPersona}
-                onChange={(e) => setGuestPersona(e.target.value)}
-                aria-label="Agent persona"
-              />
-            ) : null}
-            {loginError ? <div className="err">{loginError}</div> : null}
-            <button type="submit">Join Group Chat</button>
-            <button type="button" className="text-btn" onClick={() => setInviteParam("")}>Owner sign in instead</button>
-          </form>
-        </main>
+        <PhoneFrame>
+          <main className="login">
+            <form onSubmit={joinWithInvite}>
+              <img className="avatar-lg" alt="" src="/avatars/tay.webp" />
+              <h1>Join Group Chat</h1>
+              <p>You were invited to the group chat. Pick your name (or agent persona) to join.</p>
+              <input autoFocus placeholder="Your name or agent name" value={guestName} onChange={(e) => setGuestName(e.target.value)} aria-label="Display name" />
+              <div className="seg">
+                <button type="button" className={guestKind === "person" ? "active" : ""} onClick={() => setGuestKind("person")}>Person</button>
+                <button type="button" className={guestKind === "agent" ? "active" : ""} onClick={() => setGuestKind("agent")}>AI Agent</button>
+              </div>
+              {guestKind === "agent" ? (
+                <input placeholder="Agent persona (optional)" value={guestPersona} onChange={(e) => setGuestPersona(e.target.value)} aria-label="Agent persona" />
+              ) : null}
+              {loginError ? <div className="err">{loginError}</div> : null}
+              <button type="submit">Join Group Chat</button>
+              <button type="button" className="ios-text-btn" onClick={() => setInviteParam("")}>Owner sign in instead</button>
+            </form>
+          </main>
+        </PhoneFrame>
       );
     }
     return (
-      <main className="login">
-        <form onSubmit={signIn}>
-          <img className="avatar-lg" alt="" src="/avatars/claude.png" />
-          <h1>Dev Guild</h1>
-          <p>Enter your access passphrase to open your group chat.</p>
-          <input
-            autoFocus
-            type="password"
-            autoComplete="current-password"
-            placeholder="Access passphrase"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            aria-label="Passphrase"
-          />
-          {loginError ? <div className="err">{loginError}</div> : null}
-          <button type="submit">Open the guild</button>
-        </form>
-      </main>
+      <PhoneFrame>
+        <main className="login">
+          <form onSubmit={signIn}>
+            <img className="avatar-lg" alt="" src="/avatars/claude.webp" />
+            <h1>Dev Guild</h1>
+            <p>Enter your access passphrase to open your group chat.</p>
+            <input autoFocus type="password" autoComplete="current-password" placeholder="Access passphrase" value={pass} onChange={(e) => setPass(e.target.value)} aria-label="Passphrase" />
+            {loginError ? <div className="err">{loginError}</div> : null}
+            <button type="submit">Open the guild</button>
+          </form>
+        </main>
+      </PhoneFrame>
     );
   }
 
-  const showOnboarding = role === "owner" && guildThread && guildThread.setupDone === false && characters.length > 0;
+  const showOnboarding = !demoMode && role === "owner" && guildThread && guildThread.setupDone === false && characters.length > 0;
   const title = thread ? thread.title : "Dev Guild";
   const memberCount = thread && thread.group ? Math.max((thread.members || []).length - 1, 0) : 0;
   const subtitle = thread && thread.group
-    ? (memberCount === 0 ? "Empty group" : `${memberCount} member${memberCount === 1 ? "" : "s"}`)
-    : "iMessage";
+    ? (demoMode ? `${memberCount} demo agents ›` : (memberCount === 0 ? "Empty group ›" : `${memberCount} members ›`))
+    : "iMessage ›";
+  const headerFaces = thread && thread.group
+    ? (thread.members || []).filter((id) => id !== "owner").slice(0, 4)
+    : [(thread && (thread.members || []).find((id) => id !== "owner")) || "tay"];
 
   return (
-    <div className="app">
-      <aside className={mobileList ? "sidebar" : "sidebar hide"}>
-        <header>
-          <h1>{sidebarTab === "contacts" ? "Contacts" : "Messages"}</h1>
-          <div className="grow" />
-          <button className="icon-btn" onClick={() => openGroupSheet("custom")} aria-label="Add custom agent">+ Agent</button>
-          <button className="icon-btn" onClick={() => setComposing(!composing)} aria-label="New message">✎</button>
-        </header>
-        <div className="tabs">
-          <button
-            type="button"
-            className={sidebarTab === "chats" ? "tab active" : "tab"}
-            onClick={() => { setSidebarTab("chats"); setComposing(false); }}
-          >
-            Chats ({threads.length})
-          </button>
-          <button
-            type="button"
-            className={sidebarTab === "contacts" ? "tab active" : "tab"}
-            onClick={() => { setSidebarTab("contacts"); setComposing(false); }}
-          >
-            Contacts ({characters.length})
-          </button>
-        </div>
-        {composing ? (
-          <div className="picker list">
-            <h2>New 1:1 message</h2>
-            {characters.map((c) => (
-              <button className="row" key={c.id} onClick={() => openDM(c.id)}>
-                <Avatar id={c.id} avatar={c.avatar} />
-                <span>
-                  <div className="who">{c.name}</div>
-                  <div className="preview">{c.online ? c.role : c.note}</div>
-                </span>
-                <div className="grow" />
-                <span className={c.online ? "dot on" : "dot"} />
+    <PhoneFrame>
+      {mobileList ? (
+        <div className="root-view">
+          <header className="root-header">
+            <div className="root-top">
+              <h1>{sidebarTab === "contacts" ? "Contacts" : "Messages"}</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {!demoMode && role === "owner" ? (
+                  <button type="button" className="ios-icon-btn" onClick={() => openGroupSheet("custom")} aria-label="Add custom agent">+</button>
+                ) : null}
+                <button type="button" className="ios-icon-btn" onClick={() => setComposing(!composing)} aria-label="New message">✎</button>
+              </div>
+            </div>
+            <div className="ios-seg">
+              <button type="button" className={sidebarTab === "chats" ? "active" : ""} onClick={() => { setSidebarTab("chats"); setComposing(false); }}>
+                Chats ({threads.length})
               </button>
-            ))}
-          </div>
-        ) : sidebarTab === "contacts" ? (
-          <div className="list contacts-list">
-            <div className="contact-tools">
-              <input
-                type="search"
-                placeholder="Search contacts..."
-                aria-label="Search contacts"
-                value={contactFilter}
-                onChange={(e) => setContactFilter(e.target.value)}
-              />
-              <button type="button" className="pill-btn primary" onClick={() => openGroupSheet("custom")}>
-                + Add Custom Agent
+              <button type="button" className={sidebarTab === "contacts" ? "active" : ""} onClick={() => { setSidebarTab("contacts"); setComposing(false); }}>
+                Contacts ({characters.length})
               </button>
             </div>
-            {contactGroups.map((group) => (
-              <div key={group.key} className="contact-group">
-                <h2>{group.label} ({group.items.length})</h2>
-                {group.items.map((c) => {
-                  const inGroup = groupMemberSet.has(c.id);
-                  return (
-                    <div className="row contact-row" key={c.id}>
-                      <button type="button" className="contact-main" onClick={() => setProfile(c)}>
-                        <Avatar id={c.id} avatar={c.avatar} />
-                        <span>
-                          <div className="who">
-                            {c.name}{" "}
-                            <span className={c.online ? "badge ok" : "badge warn"}>
-                              {c.online ? "Active" : "Needs key"}
-                            </span>
-                          </div>
-                          <div className="preview">{c.online ? c.role : (c.envVar ? `Needs ${c.envVar}` : c.note)}</div>
-                        </span>
-                      </button>
-                      <div className="contact-actions">
-                        <button
-                          type="button"
-                          className={inGroup ? "pill-btn on" : "pill-btn"}
-                          onClick={() => toggleGroupMember(c.id)}
-                          title={inGroup ? "In group chat" : "Add to group chat"}
-                        >
-                          {inGroup ? "In group" : "+ Group"}
-                        </button>
-                        <button type="button" className="pill-btn" onClick={() => openDM(c.id)}>
-                          Chat
-                        </button>
+          </header>
+
+          {composing ? (
+            <div className="list-scroll">
+              <div className="ios-section-title"><span>New 1:1 Message</span></div>
+              <div className="ios-inset-card" style={{ margin: "0 12px" }}>
+                {characters.slice(0, 60).map((c) => (
+                  <button type="button" className="chat-row" key={c.id} onClick={() => openDM(c.id)}>
+                    <Avatar avatar={c.avatar} emoji={c.emoji} color={c.color} name={c.name} />
+                    <div className="chat-row-body">
+                      <div className="chat-row-top">
+                        <strong>{c.name}</strong>
+                        <span className={c.online ? "dot on" : "dot"} />
+                      </div>
+                      <div className="chat-row-preview">{c.online ? c.role : c.note}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : sidebarTab === "contacts" ? (
+            <>
+              <div className="ios-search-wrap">
+                <div className="ios-search-box">
+                  <span aria-hidden="true">🔍</span>
+                  <input
+                    type="search"
+                    placeholder={`Search ${characters.length} agents & APIs...`}
+                    aria-label="Search contacts"
+                    value={contactFilter}
+                    onChange={(e) => setContactFilter(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="section-pills">
+                {sectionNames.map((sec) => (
+                  <button key={sec} type="button" className={sectionFilter === sec ? "section-pill active" : "section-pill"} onClick={() => setSectionFilter(sec)}>
+                    {sec}
+                  </button>
+                ))}
+              </div>
+              <div className="contacts-body">
+                <div
+                  className="contacts-scroll"
+                  onScroll={(e) => {
+                    const el = e.currentTarget;
+                    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240 && visibleContactsCount < filteredContacts.length) {
+                      setVisibleContactsCount((n) => Math.min(filteredContacts.length, n + 60));
+                    }
+                  }}
+                >
+                  {contactGroups.map((group) => (
+                    <div key={group.key} className="contact-group" ref={(el) => { if (el) sectionRefs.current[group.key] = el; }}>
+                      <div className="ios-section-title">
+                        <span>{group.label}</span>
+                        <span>{group.items.length}</span>
+                      </div>
+                      <div className="ios-inset-card">
+                        {group.items.map((c) => {
+                          const inGroup = groupMemberSet.has(c.id);
+                          return (
+                            <div className="ios-contact-row" key={c.id}>
+                              <button type="button" className="contact-main" onClick={() => setProfile(c)}>
+                                <Avatar avatar={c.avatar} emoji={c.emoji} color={c.color} name={c.name} />
+                                <div className="contact-meta">
+                                  <div className="contact-name">
+                                    {c.name}
+                                    <span className={c.isPersona ? "badge persona" : (c.online ? "badge ok" : "badge warn")}>
+                                      {c.isPersona ? "Persona" : (c.online ? "Active" : "Needs key")}
+                                    </span>
+                                  </div>
+                                  <div className="contact-sub">{c.online ? c.role : (c.envVar ? `Needs ${c.envVar}` : c.note)}</div>
+                                </div>
+                              </button>
+                              <div className="contact-actions">
+                                {!demoMode ? (
+                                  <button type="button" className={inGroup ? "pill-btn on" : "pill-btn"} onClick={() => toggleGroupMember(c.id)}>
+                                    {inGroup ? "In" : "+"}
+                                  </button>
+                                ) : null}
+                                <button type="button" className="pill-btn primary" onClick={() => openDM(c.id)}>Chat</button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="list">
-            {threads.map((t) => {
-              const faceId = (t.members || []).find((id) => id !== "owner") || "claude";
-              const faceChar = byId[faceId];
-              return (
-                <button
-                  className={t.id === active ? "row active" : "row"}
-                  key={t.id}
-                  onClick={() => { setActive(t.id); setMobileList(false); }}
-                >
-                  {t.group ? (
-                    <span className="stack">
-                      {(t.members || []).filter((id) => id !== "owner").slice(0, 3).map((id) => (
-                        <Avatar key={id} id={id} avatar={byId[id] && byId[id].avatar} />
-                      ))}
-                      {(t.members || []).filter((id) => id !== "owner").length === 0 ? (
-                        <Avatar id="claude" avatar="claude.png" />
-                      ) : null}
-                    </span>
-                  ) : (
-                    <Avatar id={faceId} avatar={faceChar && faceChar.avatar} />
-                  )}
-                  <span>
-                    <div className="who">{t.title}</div>
-                    <div className="preview">{t.last || "No messages yet"}</div>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </aside>
-
-      <section className={mobileList ? "thread hide" : "thread"}>
-        <header className="bar">
-          <button className="back text-btn" onClick={() => setMobileList(true)}>‹ Messages</button>
-          <button
-            className="icon-btn"
-            onClick={() => {
-              if (thread && thread.group) openGroupSheet("members");
-              else if (thread) setProfile(byId[(thread.members || []).find((id) => id !== "owner")] || null);
-            }}
-            aria-label="Conversation"
-          >
-            <Avatar
-              id={(thread && (thread.members || []).find((id) => id !== "owner")) || "tay"}
-              avatar={(byId[(thread && (thread.members || []).find((id) => id !== "owner")) || "tay"] || {}).avatar}
-              size="sm"
-            />
-          </button>
-          <div className="titles">
-            <strong>{title}</strong>
-            <span>{subtitle}</span>
-          </div>
-          <div className="grow" />
-          <button type="button" className="pill-btn primary" onClick={() => openGroupSheet("members")}>
-            + Add / Invite
-          </button>
-        </header>
-
-        {demo ? <div className="banner">Demo voice is on. Replies stay in character and no model is called.</div> : null}
-        {error ? <div className="banner">{error}</div> : null}
-
-        <div className="transcript" ref={scroller}>
-          {messages.length === 0 && thread && thread.group ? (
-            <div className="empty-room">
-              <h2>{title}</h2>
-              {memberCount === 0 ? (
-                <>
-                  <p>Your group chat starts empty. Pick built-in agents, free AI presets, custom endpoints, or share an invite link.</p>
-                  <button type="button" className="pill-btn primary" onClick={() => openGroupSheet("members")}>
-                    + Pick Members or Invite
-                  </button>
-                </>
-              ) : (
-                <p>Send a message or @mention any member to start the conversation.</p>
-              )}
-            </div>
-          ) : null}
-          {messages.map((m, i) => {
-            const prev = messages[i - 1];
-            const showTime = !prev || new Date(m.time) - new Date(prev.time) > 5 * 60 * 1000;
-            if (m.kind === "system" || m.kind === "tool") {
-              return <div className="system" key={m.id}>{m.kind === "tool" ? `${m.name} · ${m.tool}: ${m.text}` : m.text}</div>;
-            }
-            if (m.kind === "card") {
-              return (
-                <article className="task-card" key={m.id}>
-                  <h3>Task</h3>
-                  <p>{m.task || m.text}</p>
-                  <p className="meta">@{m.assignee} · {m.card_status}</p>
-                </article>
-              );
-            }
-            const person = byId[m.from] || { name: m.name, color: m.color || "#8e8e93", id: m.from, avatar: m.avatar };
-            const lastMine = m.mine && messages.slice(i + 1).every((n) => !n.mine);
-            return (
-              <div key={m.id}>
-                {showTime ? <div className="stamp">{timeLabel(m.time)}</div> : null}
-                <div className={m.mine ? "bubble-row mine" : "bubble-row"}>
-                  {!m.mine ? (
-                    <button className="icon-btn" onClick={() => setProfile(person)} aria-label={person.name}>
-                      <Avatar id={m.from} avatar={person.avatar || m.avatar} size="sm" />
-                    </button>
+                  ))}
+                  {visibleContactsCount < filteredContacts.length ? (
+                    <div style={{ padding: "12px 6px", textAlign: "center" }}>
+                      <button type="button" className="pill-btn primary" onClick={() => setVisibleContactsCount((n) => Math.min(filteredContacts.length, n + 80))}>
+                        Show more ({filteredContacts.length - visibleContactsCount} remaining)
+                      </button>
+                    </div>
                   ) : null}
-                  <div className={m.mine ? "bubble out" : "bubble in"}>
-                    {!m.mine && thread && thread.group ? (
-                      <span className="name" style={{ color: person.color || "#8e8e93" }}>{person.name}</span>
-                    ) : null}
-                    {m.reasoning ? (
-                      <details className="thinking">
-                        <summary>Thinking</summary>
-                        <p>{m.reasoning}</p>
-                      </details>
-                    ) : null}
-                    {m.text}
-                    {(m.files || []).map((name) => <span className="file-chip" key={name}>{name}</span>)}
-                  </div>
                 </div>
-                {lastMine && m.status ? <div className="receipt">{m.status}</div> : null}
-              </div>
-            );
-          })}
-          {live && live.text ? (
-            <div className="bubble-row">
-              <Avatar id={live.from || "claude"} avatar={(byId[live.from] || {}).avatar} size="sm" />
-              <div className="bubble in">
-                {thread && thread.group && byId[live.from] ? (
-                  <span className="name" style={{ color: byId[live.from].color || "#8e8e93" }}>{byId[live.from].name}</span>
+                {railTokens.length > 1 ? (
+                  <div className="index-rail" aria-label="Section index">
+                    {railTokens.map((item) => (
+                      <button key={item.key} type="button" onClick={() => { const el = sectionRefs.current[item.key]; if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
+                        {item.ch}
+                      </button>
+                    ))}
+                  </div>
                 ) : null}
-                {live.reasoning ? (
-                  <details className="thinking">
-                    <summary>Thinking</summary>
-                    <p>{live.reasoning}</p>
-                  </details>
-                ) : null}
-                {live.text}
               </div>
+            </>
+          ) : (
+            <div className="list-scroll">
+              {threads.map((t) => {
+                const faceId = (t.members || []).find((id) => id !== "owner") || "claude";
+                const faceChar = byId[faceId];
+                return (
+                  <button type="button" className={t.id === active ? "chat-row active" : "chat-row"} key={t.id} onClick={() => { setActive(t.id); setMobileList(false); }}>
+                    {t.group ? (
+                      <span className="stack">
+                        {(t.members || []).filter((id) => id !== "owner").slice(0, 3).map((id) => (
+                          <Avatar key={id} avatar={byId[id] && byId[id].avatar} emoji={byId[id] && byId[id].emoji} color={byId[id] && byId[id].color} name={byId[id] && byId[id].name} size="xs" />
+                        ))}
+                        {(t.members || []).filter((id) => id !== "owner").length === 0 ? <Avatar avatar="claude.webp" size="sm" /> : null}
+                      </span>
+                    ) : (
+                      <Avatar avatar={faceChar && faceChar.avatar} emoji={faceChar && faceChar.emoji} color={faceChar && faceChar.color} name={(faceChar && faceChar.name) || t.title} />
+                    )}
+                    <div className="chat-row-body">
+                      <div className="chat-row-top">
+                        <strong>{t.title}</strong>
+                        <span>{t.last_at ? timeLabel(t.last_at) : "›"}</span>
+                      </div>
+                      <div className="chat-row-preview">{t.last || "No messages yet"}</div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-          ) : null}
-          {pending && !(live && live.text) ? (
-            <div className="bubble-row">
-              <Avatar id={(live && live.from) || "tay"} avatar={(byId[(live && live.from) || "tay"] || {}).avatar} size="sm" />
-              <div className="bubble in" aria-label="Typing">
-                <span className="typing"><i /><i /><i /></span>
-              </div>
-            </div>
-          ) : null}
+          )}
         </div>
+      ) : (
+        <section className="thread-view">
+          <header className="ios-navbar">
+            <button type="button" className="nav-left" onClick={() => setMobileList(true)} aria-label="Messages">
+              <span className="nav-chev">‹</span>
+              <span className="nav-badge">{threads.length || 1}</span>
+            </button>
+            <button
+              type="button"
+              className="nav-center"
+              onClick={() => {
+                if (demoMode && thread && thread.group) openGroupSheet("demo");
+                else if (thread && thread.group) openGroupSheet("members");
+                else if (thread) setProfile(byId[(thread.members || []).find((id) => id !== "owner")] || null);
+              }}
+            >
+              <span className="stack">
+                {(headerFaces.length ? headerFaces : ["claude"]).map((fid) => {
+                  const fc = byId[fid] || {};
+                  return <Avatar key={fid} avatar={fc.avatar} emoji={fc.emoji} color={fc.color} name={fc.name} size="xs" />;
+                })}
+              </span>
+              <span className="nav-title">{title}</span>
+              <span className="nav-sub">{subtitle}</span>
+            </button>
+            <div className="nav-right">
+              <button type="button" className="nav-pill-icon" onClick={() => { setShowSearch((s) => !s); setHits(null); }} aria-label="Search chat">🔍</button>
+              <button type="button" className="nav-pill-icon" onClick={() => openGroupSheet(demoMode ? "demo" : "members")} aria-label={demoMode ? "Demo info" : "Add or invite"}>
+                {demoMode ? "ⓘ" : "+"}
+              </button>
+            </div>
+          </header>
 
-        <form className="search" onSubmit={searchHistory}>
-          <input aria-label="Search this chat" placeholder="Search this chat" value={query} onChange={(e) => setQuery(e.target.value)} />
-        </form>
-        {hits ? (
-          <div className="hits">
-            {hits.length === 0 ? <p>No matching lines.</p> : hits.slice(0, 3).map((m) => <p key={m.id}>{m.name}: {m.text || m.task}</p>)}
-          </div>
-        ) : null}
-
-        <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
-          {suggestions.length ? (
-            <div className="mentions">
-              {suggestions.map((c) => (
-                <button
-                  type="button"
-                  key={c.id}
-                  onClick={() => setText((value) => value.replace(/@([a-z0-9-]*)$/, `@${c.id} `))}
-                >
-                  <Avatar id={c.id} avatar={c.avatar} size="sm" />
-                  <span>{c.name}</span>
-                  <span className={c.online ? "dot on" : "dot"} />
-                </button>
-              ))}
+          {demoMode ? (
+            <div className="demo-bar">
+              <span>
+                <strong>{liveDemo ? "Live Gemini Demo" : "Demo Voice"}</strong>
+                {rateInfo ? ` · ${rateInfo.remaining}/${rateInfo.limit} msgs left` : ""}
+              </span>
+              <button type="button" className={autoPlay ? "demo-toggle" : "demo-toggle paused"} onClick={() => setAutoPlay((v) => !v)}>
+                {autoPlay ? "● Auto Chat" : "❚❚ Paused"}
+              </button>
             </div>
           ) : null}
-          <label className="attach">
-            +
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"
-              aria-label="Attach image or PDF"
-              onChange={(e) => setFiles(Array.from(e.target.files || []))}
-            />
-          </label>
-          <textarea
-            rows={1}
-            placeholder="iMessage"
-            aria-label="Message"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-          />
-          <button className="send" type="submit" disabled={!text.trim()} aria-label="Send">↑</button>
-        </form>
-      </section>
 
-      {profile && profile.kind ? (
-        <div className="sheet" onClick={() => setProfile(null)}>
-          <article className="card" onClick={(e) => e.stopPropagation()}>
-            <div className="hero">
-              <Avatar id={profile.id} avatar={profile.avatar} size="lg" />
-              <h2>{profile.name}</h2>
-              <p className="role">{profile.kind} · {profile.role}</p>
-              <p className="catch">“{profile.catchphrase}”</p>
+          {error ? <div className="err-banner">{error}</div> : null}
+
+          {showSearch ? (
+            <form className="search-bar" onSubmit={searchHistory}>
+              <input autoFocus aria-label="Search this chat" placeholder="Search this conversation..." value={query} onChange={(e) => setQuery(e.target.value)} />
+              <button type="button" className="ios-text-btn" onClick={() => { setShowSearch(false); setHits(null); }}>Done</button>
+            </form>
+          ) : null}
+          {hits ? (
+            <div className="hits">
+              {hits.length === 0 ? <p>No matching lines.</p> : hits.slice(0, 3).map((m) => <p key={m.id}>{m.name}: {m.text || m.task}</p>)}
             </div>
-            <div className="facts">
-              <div><h3>Look</h3><p>{profile.look}</p></div>
-              <div><h3>Voice</h3><p>{profile.voice}</p></div>
-              <div><h3>Quirk</h3><p>{profile.quirk}</p></div>
-              <div><h3>With the others</h3><p>{profile.talks}</p></div>
-              <div><h3>Expertise</h3><p>{profile.expertise}</p></div>
-            </div>
-            <p className="presence">{profile.online ? "Active" : "Needs key"} — {profile.note || profile.enable}</p>
-            {profile.id !== "owner" ? (
-              <div className="sheet-actions">
-                <button className="pill-btn primary" onClick={() => openDM(profile.id)}>Message {profile.name}</button>
-                <button className="pill-btn" onClick={() => toggleGroupMember(profile.id)}>
-                  {groupMemberSet.has(profile.id) ? "Remove from group" : "Add to group"}
-                </button>
+          ) : null}
+
+          <div className="transcript" ref={scroller}>
+            {messages.length === 0 && thread && thread.group ? (
+              <div className="empty-room">
+                <span className="stack">
+                  {(headerFaces.length ? headerFaces : ["claude", "grok", "tay"]).slice(0, 4).map((fid) => {
+                    const fc = byId[fid] || {};
+                    return <Avatar key={fid} avatar={fc.avatar} emoji={fc.emoji} color={fc.color} name={fc.name} size="sm" />;
+                  })}
+                </span>
+                <h2>{title}</h2>
+                {demoMode ? (
+                  <>
+                    <p>Agents are warming up! Jump in anytime or tap a prompt below.</p>
+                    <div className="starter-chips">
+                      {DEMO_STARTERS.map((q) => (
+                        <button key={q} type="button" className="starter-chip" onClick={() => send(q)}>{q}</button>
+                      ))}
+                    </div>
+                  </>
+                ) : memberCount === 0 ? (
+                  <>
+                    <p>Your group chat starts empty. Pick built-in agents, 500+ directory personas, or share an invite link.</p>
+                    <button type="button" className="pill-btn primary" onClick={() => openGroupSheet("members")}>+ Pick Members or Invite</button>
+                  </>
+                ) : (
+                  <p>Send an iMessage or @mention any member to start the conversation.</p>
+                )}
               </div>
             ) : null}
-          </article>
-        </div>
-      ) : null}
+
+            {messages.map((m, i) => {
+              const prev = messages[i - 1];
+              const next = messages[i + 1];
+              const showTime = !prev || new Date(m.time) - new Date(prev.time) > 5 * 60 * 1000;
+              if (m.kind === "system" || m.kind === "tool") {
+                return <div className="system" key={m.id}>{m.kind === "tool" ? `${m.name} · ${m.tool}: ${m.text}` : m.text}</div>;
+              }
+              if (m.kind === "card") {
+                return (
+                  <article className="task-card" key={m.id}>
+                    <h3>Task</h3>
+                    <p>{m.task || m.text}</p>
+                    <p className="meta">@{m.assignee} · {m.card_status}</p>
+                  </article>
+                );
+              }
+              const person = byId[m.from] || { name: m.name, color: m.color || "#8e8e93", id: m.from, avatar: m.avatar };
+              const samePrev = prev && prev.kind !== "system" && prev.kind !== "tool" && prev.kind !== "card" && prev.from === m.from && !showTime;
+              const sameNext = next && next.kind !== "system" && next.kind !== "tool" && next.kind !== "card" && next.from === m.from && (new Date(next.time) - new Date(m.time) <= 5 * 60 * 1000);
+              const lastMine = m.mine && messages.slice(i + 1).every((n) => !n.mine);
+
+              return (
+                <div key={m.id}>
+                  {showTime ? <div className="stamp">{timeLabel(m.time)}</div> : null}
+                  {!m.mine && thread && thread.group && !samePrev ? <div className="sender-label">{person.name}</div> : null}
+                  <div className={`${m.mine ? "bubble-row mine" : "bubble-row"}${samePrev ? " grouped" : ""}`}>
+                    {!m.mine ? (
+                      <div className="avatar-slot">
+                        {!sameNext ? (
+                          <button type="button" className="avatar-btn" onClick={() => setProfile(person)} aria-label={person.name}>
+                            <Avatar avatar={person.avatar || m.avatar} emoji={person.emoji} color={person.color} name={person.name} size="xs" />
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className={`bubble ${m.mine ? "out" : "in"}${!sameNext ? " has-tail" : ""}`}>
+                      {m.reasoning ? <details className="thinking"><summary>Thinking</summary><p>{m.reasoning}</p></details> : null}
+                      {m.text}
+                      {(m.files || []).map((name) => <span className="file-chip" key={name}>{name}</span>)}
+                    </div>
+                  </div>
+                  {lastMine && m.status ? <div className="receipt">{m.status}</div> : null}
+                </div>
+              );
+            })}
+
+            {live && live.text ? (
+              <div>
+                {thread && thread.group && byId[live.from] ? <div className="sender-label">{byId[live.from].name}</div> : null}
+                <div className="bubble-row">
+                  <div className="avatar-slot">
+                    <Avatar avatar={(byId[live.from] || {}).avatar} emoji={(byId[live.from] || {}).emoji} color={(byId[live.from] || {}).color} name={(byId[live.from] || {}).name} size="xs" />
+                  </div>
+                  <div className="bubble in has-tail">
+                    {live.reasoning ? <details className="thinking"><summary>Thinking</summary><p>{live.reasoning}</p></details> : null}
+                    {live.text}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {pending && !(live && live.text) ? (
+              <div className="bubble-row" style={{ marginTop: 4 }}>
+                <div className="avatar-slot">
+                  <Avatar avatar={(byId[(live && live.from) || "tay"] || {}).avatar} size="xs" />
+                </div>
+                <div className="bubble in has-tail" aria-label="Typing">
+                  <span className="typing"><i /><i /><i /></span>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <form className="ios-composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
+            {suggestions.length ? (
+              <div className="mentions">
+                {suggestions.map((c) => (
+                  <button type="button" key={c.id} onClick={() => setText((value) => value.replace(/@([a-z0-9-]*)$/, `@${c.id} `))}>
+                    <Avatar avatar={c.avatar} emoji={c.emoji} color={c.color} name={c.name} size="xs" />
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                    <span className={c.online ? "dot on" : "dot"} />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <label className={demoMode ? "plus-circle disabled" : "plus-circle"} title={demoMode ? "Attachments disabled in demo" : "Attach image or PDF"}>
+              +
+              {!demoMode ? (
+                <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" aria-label="Attach image or PDF" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+              ) : null}
+            </label>
+            <div className="composer-pill">
+              <textarea
+                rows={1}
+                placeholder={demoMode ? "iMessage (Public Demo)" : "iMessage"}
+                aria-label="Message"
+                maxLength={demoMode ? 500 : undefined}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+              />
+              <button className="send-arrow" type="submit" disabled={!text.trim() || pending} aria-label="Send">↑</button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      <ProfileSheet
+        profile={profile}
+        demoMode={demoMode}
+        groupMemberSet={groupMemberSet}
+        onClose={() => setProfile(null)}
+        onOpenDM={openDM}
+        onToggleMember={toggleGroupMember}
+      />
 
       {showOnboarding ? (
         <div className="sheet">
-          <form className="card wide form-stack" onSubmit={(e) => completeGroupSetup(e, false)}>
+          <form className="card form-stack" onSubmit={(e) => completeGroupSetup(e, false)}>
+            <div className="grabber" />
             <div className="sheet-head">
               <h2>Create Your Group Chat</h2>
-              <button type="button" className="text-btn" disabled={setupBusy} onClick={() => completeGroupSetup(null, true)}>
-                Start Empty
-              </button>
+              <button type="button" className="ios-text-btn" disabled={setupBusy} onClick={() => completeGroupSetup(null, true)}>Start Empty</button>
             </div>
-            <p className="presence" style={{ marginTop: 0 }}>
-              Name your group and pick which agents or free AI presets join. You can change this or invite others anytime.
-            </p>
+            <p className="presence" style={{ marginTop: 0 }}>Name your group and pick which agents or free AI personas join.</p>
             <div className="two-col">
-              <label>
-                <span>Group Name</span>
-                <input
-                  className="field-input"
-                  value={setupTitle}
-                  onChange={(e) => setSetupTitle(e.target.value)}
-                  placeholder="My Dev Guild"
-                />
-              </label>
-              <label>
-                <span>Your Name</span>
-                <input
-                  className="field-input"
-                  value={setupOwner}
-                  onChange={(e) => setSetupOwner(e.target.value)}
-                  placeholder="Your display name"
-                />
-              </label>
+              <label><span>Group Name</span><input className="field-input" value={setupTitle} onChange={(e) => setSetupTitle(e.target.value)} placeholder="My Dev Guild" /></label>
+              <label><span>Your Name</span><input className="field-input" value={setupOwner} onChange={(e) => setSetupOwner(e.target.value)} placeholder="Your display name" /></label>
             </div>
             <div className="quick-row">
-              <button
-                type="button"
-                className="pill-btn"
-                onClick={() => setSetupMembers(STARTER_IDS.filter((id) => characters.some((c) => c.id === id)))}
-              >
-                Starter Team (5)
-              </button>
-              <button
-                type="button"
-                className="pill-btn"
-                onClick={() => setSetupMembers(characters.filter((c) => c.online).map((c) => c.id))}
-              >
-                All Active
-              </button>
-              <button type="button" className="pill-btn" onClick={() => setSetupMembers([])}>
-                Clear ({setupMembers.length})
-              </button>
+              <button type="button" className="pill-btn" onClick={() => setSetupMembers(STARTER_IDS.filter((id) => characters.some((c) => c.id === id)))}>Starter Team (5)</button>
+              <button type="button" className="pill-btn" onClick={() => setSetupMembers(characters.filter((c) => c.online).slice(0, 20).map((c) => c.id))}>Top 20 Active</button>
+              <button type="button" className="pill-btn" onClick={() => setSetupMembers([])}>Clear ({setupMembers.length})</button>
             </div>
-            <input
-              className="field-input"
-              type="search"
-              placeholder="Filter agents, presets, or tool mascots..."
-              value={setupFilter}
-              onChange={(e) => setSetupFilter(e.target.value)}
-            />
+            <input className="field-input" type="search" placeholder="Filter agents, presets, or directory..." value={setupFilter} onChange={(e) => setSetupFilter(e.target.value)} />
             <div className="member-list">
               {filteredSetupMembers.map((c) => {
                 const picked = setupMembers.includes(c.id);
                 return (
                   <div className="member-item" key={c.id}>
-                    <Avatar id={c.id} avatar={c.avatar} size="sm" />
-                    <div className="member-meta">
-                      <strong>{c.name} <span className={c.online ? "badge ok" : "badge warn"}>{c.online ? "Active" : "Needs key"}</span></strong>
-                      <span>@{c.id} · {c.role}</span>
-                    </div>
-                    <button
-                      type="button"
-                      className={picked ? "pill-btn on" : "pill-btn"}
-                      onClick={() => toggleSetupMember(c.id)}
-                    >
-                      {picked ? "Selected ✓" : "+ Pick"}
-                    </button>
+                    <Avatar avatar={c.avatar} emoji={c.emoji} color={c.color} name={c.name} size="sm" />
+                    <div className="member-meta"><strong>{c.name}</strong><span>@{c.id} · {c.role}</span></div>
+                    <button type="button" className={picked ? "pill-btn on" : "pill-btn"} onClick={() => toggleSetupMember(c.id)}>{picked ? "Selected ✓" : "+ Pick"}</button>
                   </div>
                 );
               })}
             </div>
-            <button type="submit" className="pill-btn primary full" disabled={setupBusy}>
-              {setupBusy ? "Creating..." : `Create Group Chat (${setupMembers.length} selected)`}
-            </button>
+            <button type="submit" className="pill-btn primary full" disabled={setupBusy}>{setupBusy ? "Creating..." : `Create Group Chat (${setupMembers.length} selected)`}</button>
           </form>
         </div>
       ) : null}
 
-      {groupSheet ? (
+      {groupSheet === "demo" && demoMode ? (
+        <DemoSheet characters={characters} onClose={() => setGroupSheet(null)} onOpenDM={openDM} />
+      ) : null}
+
+      {groupSheet && groupSheet !== "demo" && !demoMode ? (
         <div className="sheet" onClick={() => setGroupSheet(null)}>
-          <article className="card wide" onClick={(e) => e.stopPropagation()}>
+          <article className="card" onClick={(e) => e.stopPropagation()}>
+            <div className="grabber" />
             <div className="sheet-head">
               <h2>Add &amp; Invite to Group</h2>
-              <button type="button" className="text-btn" onClick={() => setGroupSheet(null)}>Done</button>
+              <button type="button" className="ios-text-btn" onClick={() => setGroupSheet(null)}>Done</button>
             </div>
-            <div className="tabs">
-              <button type="button" className={groupSheet === "members" ? "tab active" : "tab"} onClick={() => openGroupSheet("members")}>
-                Roster ({groupMemberSet.size > 0 ? groupMemberSet.size - 1 : 0})
-              </button>
-              {role === "owner" ? (
-                <button type="button" className={groupSheet === "settings" ? "tab active" : "tab"} onClick={() => openGroupSheet("settings")}>
-                  Group
-                </button>
-              ) : null}
-              <button type="button" className={groupSheet === "custom" ? "tab active" : "tab"} onClick={() => openGroupSheet("custom")}>
-                + Custom Agent
-              </button>
-              <button type="button" className={groupSheet === "invite" ? "tab active" : "tab"} onClick={() => openGroupSheet("invite")}>
-                Invite Link
-              </button>
+            <div className="ios-seg">
+              <button type="button" className={groupSheet === "members" ? "active" : ""} onClick={() => openGroupSheet("members")}>Roster ({groupMemberSet.size > 0 ? groupMemberSet.size - 1 : 0})</button>
+              {role === "owner" ? <button type="button" className={groupSheet === "settings" ? "active" : ""} onClick={() => openGroupSheet("settings")}>Group</button> : null}
+              <button type="button" className={groupSheet === "custom" ? "active" : ""} onClick={() => openGroupSheet("custom")}>+ Agent</button>
+              <button type="button" className={groupSheet === "invite" ? "active" : ""} onClick={() => openGroupSheet("invite")}>Invite</button>
             </div>
-
             {groupSheet === "members" ? (
               <div className="sheet-body">
-                <input
-                  className="field-input"
-                  type="search"
-                  placeholder="Filter built-in characters & presets..."
-                  value={memberFilter}
-                  onChange={(e) => setMemberFilter(e.target.value)}
-                />
+                <input className="field-input" type="search" placeholder={`Filter ${characters.length} agents & personas...`} value={memberFilter} onChange={(e) => setMemberFilter(e.target.value)} />
                 <div className="member-list">
                   {filteredMembers.map((c) => {
                     const inGroup = groupMemberSet.has(c.id);
                     return (
                       <div className="member-item" key={c.id}>
-                        <Avatar id={c.id} avatar={c.avatar} size="sm" />
-                        <div className="member-meta">
-                          <strong>{c.name} <span className={c.online ? "badge ok" : "badge warn"}>{c.online ? "Active" : "Needs key"}</span></strong>
-                          <span>@{c.id} · {c.role}</span>
-                        </div>
-                        <button type="button" className={inGroup ? "pill-btn on" : "pill-btn"} onClick={() => toggleGroupMember(c.id)}>
-                          {inGroup ? "In group ✓" : "+ Add"}
-                        </button>
+                        <Avatar avatar={c.avatar} emoji={c.emoji} color={c.color} name={c.name} size="sm" />
+                        <div className="member-meta"><strong>{c.name}</strong><span>@{c.id} · {c.role}</span></div>
+                        <button type="button" className={inGroup ? "pill-btn on" : "pill-btn"} onClick={() => toggleGroupMember(c.id)}>{inGroup ? "In ✓" : "+ Add"}</button>
                       </div>
                     );
                   })}
                 </div>
               </div>
             ) : null}
-
             {groupSheet === "settings" && role === "owner" ? (
               <form className="sheet-body form-stack" onSubmit={saveGroupSettings}>
-                <label>
-                  <span>Group Name</span>
-                  <input
-                    className="field-input"
-                    value={setupTitle}
-                    onChange={(e) => setSetupTitle(e.target.value)}
-                    placeholder="My Dev Guild"
-                  />
-                </label>
-                <label>
-                  <span>Your Display Name</span>
-                  <input
-                    className="field-input"
-                    value={setupOwner}
-                    onChange={(e) => setSetupOwner(e.target.value)}
-                    placeholder="Owner"
-                  />
-                </label>
+                <label><span>Group Name</span><input className="field-input" value={setupTitle} onChange={(e) => setSetupTitle(e.target.value)} placeholder="My Dev Guild" /></label>
+                <label><span>Your Display Name</span><input className="field-input" value={setupOwner} onChange={(e) => setSetupOwner(e.target.value)} placeholder="Owner" /></label>
                 {settingsMsg ? <p className="presence">{settingsMsg}</p> : null}
-                <button type="submit" className="pill-btn primary full" disabled={setupBusy}>
-                  {setupBusy ? "Saving..." : "Save Group Settings"}
-                </button>
+                <button type="submit" className="pill-btn primary full" disabled={setupBusy}>{setupBusy ? "Saving..." : "Save Group Settings"}</button>
               </form>
             ) : null}
-
             {groupSheet === "custom" ? (
               <form className="sheet-body form-stack" onSubmit={submitCustomAgent}>
-                <label>
-                  <span>Agent Name</span>
-                  <input
-                    className="field-input"
-                    required
-                    placeholder="e.g. Nova"
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Persona / Instructions</span>
-                  <textarea
-                    className="field-input"
-                    rows={3}
-                    placeholder="How this agent talks, thinks, and collaborates..."
-                    value={customPersona}
-                    onChange={(e) => setCustomPersona(e.target.value)}
-                  />
-                </label>
+                <label><span>Agent Name</span><input className="field-input" required placeholder="e.g. Nova" value={customName} onChange={(e) => setCustomName(e.target.value)} /></label>
+                <label><span>Persona / Instructions</span><textarea className="field-input" rows={3} placeholder="How this agent talks and collaborates..." value={customPersona} onChange={(e) => setCustomPersona(e.target.value)} /></label>
                 <div className="two-col">
-                  <label>
-                    <span>Role (optional)</span>
-                    <input
-                      className="field-input"
-                      placeholder="e.g. Security reviewer"
-                      value={customRole}
-                      onChange={(e) => setCustomRole(e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    <span>Catchphrase (optional)</span>
-                    <input
-                      className="field-input"
-                      placeholder="e.g. Trust, then verify."
-                      value={customCatch}
-                      onChange={(e) => setCustomCatch(e.target.value)}
-                    />
-                  </label>
+                  <label><span>Role (optional)</span><input className="field-input" placeholder="Security reviewer" value={customRole} onChange={(e) => setCustomRole(e.target.value)} /></label>
+                  <label><span>Catchphrase (optional)</span><input className="field-input" placeholder="Trust, then verify." value={customCatch} onChange={(e) => setCustomCatch(e.target.value)} /></label>
                 </div>
                 <label>
                   <span>Model / Endpoint</span>
                   <div className="seg">
-                    <button
-                      type="button"
-                      className={customEndpoint === "gemini" ? "active" : ""}
-                      onClick={() => { setCustomEndpoint("gemini"); setCustomModel("gemini-3.5-flash-lite"); }}
-                    >
-                      Free Gemini (default)
-                    </button>
-                    <button
-                      type="button"
-                      className={customEndpoint === "openai" ? "active" : ""}
-                      onClick={() => { setCustomEndpoint("openai"); setCustomModel(""); }}
-                    >
-                      OpenAI-compatible
-                    </button>
+                    <button type="button" className={customEndpoint === "gemini" ? "active" : ""} onClick={() => { setCustomEndpoint("gemini"); setCustomModel("gemini-3.5-flash-lite"); }}>Free Gemini</button>
+                    <button type="button" className={customEndpoint === "openai" ? "active" : ""} onClick={() => { setCustomEndpoint("openai"); setCustomModel(""); }}>OpenAI-compatible</button>
                   </div>
                 </label>
                 {customEndpoint === "gemini" ? (
@@ -1172,48 +1189,17 @@ export default function App() {
                   </label>
                 ) : (
                   <div className="form-stack">
-                    <label>
-                      <span>Base URL</span>
-                      <input
-                        className="field-input"
-                        required
-                        placeholder="https://api.groq.com/openai/v1"
-                        value={customBaseUrl}
-                        onChange={(e) => setCustomBaseUrl(e.target.value)}
-                      />
-                    </label>
+                    <label><span>Base URL</span><input className="field-input" required placeholder="https://api.groq.com/openai/v1" value={customBaseUrl} onChange={(e) => setCustomBaseUrl(e.target.value)} /></label>
                     <div className="two-col">
-                      <label>
-                        <span>Model ID</span>
-                        <input
-                          className="field-input"
-                          required
-                          placeholder="llama-3.1-8b-instant"
-                          value={customModel}
-                          onChange={(e) => setCustomModel(e.target.value)}
-                        />
-                      </label>
-                      <label>
-                        <span>API Key (stored server-side only)</span>
-                        <input
-                          className="field-input"
-                          type="password"
-                          required
-                          placeholder="sk-..."
-                          value={customApiKey}
-                          onChange={(e) => setCustomApiKey(e.target.value)}
-                        />
-                      </label>
+                      <label><span>Model ID</span><input className="field-input" required placeholder="llama-3.1-8b-instant" value={customModel} onChange={(e) => setCustomModel(e.target.value)} /></label>
+                      <label><span>API Key (server-side)</span><input className="field-input" type="password" required placeholder="sk-..." value={customApiKey} onChange={(e) => setCustomApiKey(e.target.value)} /></label>
                     </div>
                   </div>
                 )}
                 {customMsg ? <p className="presence">{customMsg}</p> : null}
-                <button type="submit" className="pill-btn primary full" disabled={customBusy || !customName.trim()}>
-                  {customBusy ? "Adding..." : "Add Agent to Group"}
-                </button>
+                <button type="submit" className="pill-btn primary full" disabled={customBusy || !customName.trim()}>{customBusy ? "Adding..." : "Add Agent to Group"}</button>
               </form>
             ) : null}
-
             {groupSheet === "invite" ? (
               <div className="sheet-body form-stack">
                 {role !== "owner" ? (
@@ -1225,25 +1211,19 @@ export default function App() {
                       <p className="presence">Anyone (or any agent) with this link can join {inviteInfo.groupTitle || title}.</p>
                       <div className="copy-row">
                         <input className="field-input" readOnly value={inviteInfo.url} />
-                        <button type="button" className="pill-btn primary" onClick={() => copyText("link", inviteInfo.url)}>
-                          {copied === "link" ? "Copied" : "Copy"}
-                        </button>
+                        <button type="button" className="pill-btn primary" onClick={() => copyText("link", inviteInfo.url)}>{copied === "link" ? "Copied" : "Copy"}</button>
                       </div>
                     </div>
                     <div>
                       <h3>Invite Token</h3>
                       <div className="copy-row">
                         <input className="field-input" readOnly value={inviteInfo.code} />
-                        <button type="button" className="pill-btn" onClick={() => copyText("code", inviteInfo.code)}>
-                          {copied === "code" ? "Copied" : "Copy"}
-                        </button>
+                        <button type="button" className="pill-btn" onClick={() => copyText("code", inviteInfo.code)}>{copied === "code" ? "Copied" : "Copy"}</button>
                       </div>
                     </div>
                     <div>
                       <h3>External Agent Join &amp; Post API</h3>
-                      <pre className="code-box">{`curl -X POST ${inviteInfo.messageEndpoint} \\
-  -H "Content-Type: application/json" \\
-  -d '{"invite":"${inviteInfo.code}","from":"my-agent","name":"My Agent","text":"Hello @tay!"}'`}</pre>
+                      <pre className="code-box">{`curl -X POST ${inviteInfo.messageEndpoint} \\\n  -H "Content-Type: application/json" \\\n  -d '{"invite":"${inviteInfo.code}","from":"my-agent","name":"My Agent","text":"Hello @tay!"}'`}</pre>
                     </div>
                   </>
                 ) : (
@@ -1254,6 +1234,6 @@ export default function App() {
           </article>
         </div>
       ) : null}
-    </div>
+    </PhoneFrame>
   );
 }
