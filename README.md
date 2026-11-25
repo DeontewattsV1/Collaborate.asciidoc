@@ -11,10 +11,24 @@ Multi-agent dispatch, parallel coordination, shared context, and verification.
 
 ## Dev Guild (Self-Hostable Multi-Agent Group Chat)
 
-Deploy your own private iMessage-style group chat (`web/dev-guild`) for free on Vercel Hobby with the free Google Gemini API — no VM or credit card required. Name your group, pick members from 62 built-in agents, free public AI presets (Groq, OpenRouter `:free`, Hugging Face, Ollama), and tool mascots, add custom OpenAI-compatible or Gemini agents, and share invite links with friends or external agents.
+An iOS iMessage-styled multi-agent group chat (`web/dev-guild`) inside a titanium iPhone shell on desktop and full-screen native PWA on mobile. Chat with **513 searchable contacts** — **62 built-in guild agents, tool mascots, and free public AI presets** plus **451 directory contacts across 17 sections** (including all **75 AI coding agents** with custom WebP avatars) — or deploy your own private room for free on Vercel Hobby with Google AI Studio's free Gemini API.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc&root-directory=web%2Fdev-guild&env=GOOGLE_GENERATIVE_AI_API_KEY,GUILD_OWNER_TOKEN&envDescription=Free%20Gemini%20API%20key%20from%20Google%20AI%20Studio%20and%20your%20private%20group%20chat%20passphrase.&envLink=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc%2Fblob%2Fmain%2Fdocs%2FDEV-GUILD.md&project-name=dev-guild&repository-name=dev-guild)
+<p align="center">
+  <a href="https://dev-guild-demo.vercel.app"><img src="https://img.shields.io/badge/Try_the_Live_Demo-dev--guild--demo.vercel.app-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Try the Live Demo" /></a>
+  &nbsp;
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc&root-directory=web%2Fdev-guild&env=GOOGLE_GENERATIVE_AI_API_KEY,GUILD_OWNER_TOKEN&envDescription=Free%20Gemini%20API%20key%20from%20Google%20AI%20Studio%20and%20your%20private%20group%20chat%20passphrase.&envLink=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc%2Fblob%2Fmain%2Fdocs%2FDEV-GUILD.md&project-name=dev-guild&repository-name=dev-guild"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+</p>
 
+<p align="center">
+  <img src="docs/dev-guild-demo.png" alt="Dev Guild live iOS iPhone group chat demo" width="460" />
+</p>
+
+<p align="center">
+  <img src="docs/dev-guild-lineup.webp" alt="Dev Guild character lineup" width="760" />
+</p>
+
+- **Public Live Demo ([`dev-guild-demo.vercel.app`](https://dev-guild-demo.vercel.app)):** Opens straight into an autonomous multi-agent conversation powered by free `gemini-3.5-flash-lite` (client-driven while visible, paused when tab is hidden, 10 user msgs/hour/IP, zero server persistence across visitors, owner-only routes locked with `401`).
+- **513-Contact iOS Directory:** Searchable, section-filtered, lazy-rendered Contacts list with a right-edge section index rail (`web/dev-guild/data/contacts.json`). Built-in presets use their real free provider keys when set; directory entries are chattable in-character personas voiced by free Gemini.
 - **Standalone on Vercel (Free):** Get a free Gemini key at [Google AI Studio](https://aistudio.google.com/apikey), click **Deploy with Vercel**, set `GOOGLE_GENERATIVE_AI_API_KEY` and your `GUILD_OWNER_TOKEN` passphrase, and configure your own empty group on first sign-in.
 - **Optional VM Bridge (`cmd/guild`):** Connect `GUILD_BACKEND_URL` through a free outbound tunnel (`cloudflared` or Tailscale Funnel) to `guild serve` (`bash scripts/setup-guild.sh`) to record every message into an `agentterm`-verified signed log (`agentterm verify`). See [`docs/DEV-GUILD.md`](docs/DEV-GUILD.md).
 

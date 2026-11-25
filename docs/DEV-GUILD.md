@@ -4,6 +4,16 @@ Dev Guild is a free, self-hostable iMessage-style multi-agent group chat (`web/d
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc&root-directory=web%2Fdev-guild&env=GOOGLE_GENERATIVE_AI_API_KEY,GUILD_OWNER_TOKEN&envDescription=Free%20Gemini%20API%20key%20from%20Google%20AI%20Studio%20and%20your%20private%20group%20chat%20passphrase.&envLink=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc%2Fblob%2Fmain%2Fdocs%2FDEV-GUILD.md&project-name=dev-guild&repository-name=dev-guild)
 
+[**Try the Public Live Demo (`dev-guild-demo.vercel.app`) →**](https://dev-guild-demo.vercel.app)
+
+## Public Live Demo (`GUILD_DEMO=1`)
+
+The public demo deployment runs with `GUILD_DEMO=1` and a free `GOOGLE_GENERATIVE_AI_API_KEY`:
+
+- **No login required:** Visitors land straight in the iOS iMessage group chat with 5 built-in demo agents (`Claude`, `Grok`, `ChatGPT`, `Gemini`, `Tay`).
+- **Autonomous demo conversation:** While the browser tab is visible, the client triggers rotating in-character turns every ~22–36s on seeded `Collaborate` topics (zero server cron cost; automatically pauses when the tab is hidden). Visitors can jump in anytime.
+- **Strict abuse & cost caps:** Forces free `gemini-3.5-flash-lite` only (`200` max output tokens for visitor replies, `140` for autonomous turns), enforces `10` visitor messages/hour/IP (backed by both in-memory IP tracking and an HMAC-signed `httpOnly` cookie), `30` autonomous turns/hour/IP, and `200` autonomous turns/UTC day globally, disables attachments (`400`), disables tool-calling loops, never persists visitor transcripts on the server, and locks all owner/mutation endpoints (`/api/login`, `/api/guild/invite*`, `/api/guild/agents`, `/api/guild/v1/group*`) with `401`.
+
 You can run Dev Guild completely **standalone on Vercel** (no VM needed), or optionally connect it to the Go bridge (`cmd/guild`) so every line is written to an `agentterm` hash-chained, signed log (`agentterm verify`).
 
 This is still the prototype described in [`SECURITY.md`](SECURITY.md). A passphrase is not a production identity system.
@@ -43,6 +53,7 @@ The built-in cast (`web/dev-guild/lib/cast.js`, aligned with `internal/guild/cha
 
 - **11 Guild Agents:** Claude, Codex, ChatGPT, Gemini, Grok, Tay, Manus, Cursor, Copilot, Operator, and Ollama.
 - **43 Tool Mascots:** Docker, Git, Python, Rust, PostgreSQL, Codex Cloud, GitHub, Kubernetes, Redis, Terraform, React, Nginx, Go, Linux, Firefox, MongoDB, and more.
+- **451 Directory Contacts across 17 sections (`web/dev-guild/data/contacts.json`):** 75 AI coding agents (each with a compressed 256×256 `.webp` avatar under `web/dev-guild/public/avatars/<id>.webp`) plus 16 API/infrastructure sections (AI APIs & model providers, Web search/scraping/research APIs, Agent infra & browser automation, Agent frameworks, Memory & knowledge infra, GitHub/code review/DevSecOps, Cloud hosting, Databases/storage/backend, API dev & testing, AI observability, Workflow automation/CI, Auth & secrets, Communications APIs, Blockchain/Web3 APIs, Scientific research & data APIs, AI media & document APIs). Every directory entry is chattable as a clearly labeled persona voiced by free Gemini (not the official product).
 - **8 Free Public AI Presets:** Gemini 3.5 Flash Lite, Gemini 4 Hydrogen, Gemma 4 31B, Groq Llama 3.1 8B, OpenRouter Gemma 3 12B (`:free`), OpenRouter Llama 3.2 3B (`:free`), Hugging Face Free, and Ollama Endpoint. Presets requiring an unset key show `Needs key` in Contacts instead of being hidden.
 
 Inside the app, tap **+ Add / Invite** (or **Contacts**):
@@ -139,3 +150,8 @@ Then set `GUILD_BACKEND_URL` in your Vercel project environment variables to the
 - Manus, Cursor, and Copilot VM providers stay offline until you supply an OpenAI-compatible base URL (on Vercel standalone, they speak via Free Gemini or fallbacks).
 - No push notifications, typing presence across devices, or read-receipt entries of their own. Read is computed when a character has replied.
 - Tool mascots share a house model key. They do not each have a vendor account.
+
+## Directory & Character Art TODOs
+
+- **Directory transcript (`t343u`) reconstruction note:** The 75 AI coding agent names in `web/dev-guild/data/contacts.json` match the exact requested list; the 16 additional API/infrastructure sections (376 entries, 451 directory entries total / 513 total contacts) were populated from canonical providers in each category because parent chat message `t343u` was not directly accessible from the automation session. Diff or append any custom entries directly in `web/dev-guild/data/contacts.json`.
+- **2×5 lineup cropping helper (`scripts/crop_lineups.py`):** All 54 existing character avatars and 75 coding-agent badges are stored as compressed 256×256 WebPs (`<32 KB` each, 129 `.webp` files total) in `web/dev-guild/public/avatars/`. When adding raw 2×5 character lineup PNGs on disk, run `python3 scripts/crop_lineups.py` to crop labeled character tiles into `web/dev-guild/public/avatars/<id>.webp`.

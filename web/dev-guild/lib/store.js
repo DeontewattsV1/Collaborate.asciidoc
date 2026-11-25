@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { getGroupName, getOwnerName } from "./auth.js";
 import { BUILTIN_CAST, statusFor, systemPromptFor } from "./cast.js";
+import { DEMO_AGENT_IDS, isDemoMode } from "./demo.js";
+import { directoryCharacters } from "./directory.js";
 
 const STATE_PATH = "/tmp/dev-guild-state.json";
 
@@ -187,16 +189,43 @@ export function mergeGroupPrefs(cookiePrefs, env) {
   };
 }
 
-export function buildCatalog({ env, customAgents, vmCharacters, includeSecrets = false, groupTitle = "" }) {
+export function buildCatalog({ env, customAgents, vmCharacters, includeSecrets = false, includeDirectory = false, groupTitle = "" }) {
+  const sourceEnv = env || process.env;
+  if (isDemoMode(sourceEnv)) {
+    const demoSet = new Set(DEMO_AGENT_IDS);
+    const demoRaw = BUILTIN_CAST.filter((c) => demoSet.has(c.id));
+    const room = groupTitle || getGroupName(sourceEnv) || "Dev Guild Demo";
+    return demoRaw.map((c) => {
+      const st = statusFor(c, sourceEnv);
+      return {
+        ...c,
+        online: st.online,
+        statusLabel: st.online ? "active" : st.statusLabel,
+        note: st.note,
+        needsKey: false,
+        envVar: "",
+        hasKey: false,
+        system: `${systemPromptFor(c, demoRaw, room)}
+Keep replies brief (1-3 short sentences) in this public demo.`,
+      };
+    });
+  }
   const state = loadState();
   const vmById = new Map((vmCharacters || []).map((c) => [c.id, c]));
   const combinedCustom = mergeCustomAgents(customAgents);
-  const allRaw = [...BUILTIN_CAST, ...combinedCustom, ...(state.invitedParticipants || [])];
-  const basePeers = allRaw.slice(0, 20);
-  const room = groupTitle || getGroupName(env);
+  const dirEntries = includeDirectory ? directoryCharacters(sourceEnv) : [];
+  const allRaw = [...BUILTIN_CAST, ...combinedCustom, ...(state.invitedParticipants || []), ...dirEntries];
+  const basePeers = allRaw.slice(0, 16);
+  const room = groupTitle || getGroupName(sourceEnv);
   return allRaw.map((c) => {
+    if (c.kind === "directory") {
+      return {
+        ...c,
+        system: systemPromptFor(c, basePeers, room),
+      };
+    }
     const vm = vmById.get(c.id);
-    const st = statusFor(c, env);
+    const st = statusFor(c, sourceEnv);
     const online = vm && vm.online ? true : st.online;
     const note = vm && vm.online && !st.online ? vm.note : st.note;
     const statusLabel = online ? "active" : st.statusLabel;
@@ -299,6 +328,21 @@ export function configureGroup({ title, ownerName, members, setupDone, replaceMe
 }
 
 export function listThreads({ catalog, cookiePrefs, vmThreads, env }) {
+  const sourceEnv = env || process.env;
+  if (isDemoMode(sourceEnv)) {
+    const demoMembers = ["owner", ...(catalog || []).map((c) => c.id)];
+    const title = String((sourceEnv.GUILD_GROUP_NAME || "")).trim().slice(0, 60) || "Dev Guild Demo";
+    return [{
+      id: "guild",
+      title,
+      ownerName: "You",
+      setupDone: true,
+      members: demoMembers,
+      group: true,
+      last: "Public live demo — say hi to the guild!",
+      last_at: "",
+    }];
+  }
   const state = loadState();
   const prefs = mergeGroupPrefs(cookiePrefs, env);
   const members = resolveGroupMembers({ catalog, cookiePrefs, vmThreads, env });
@@ -339,8 +383,7 @@ export function listThreads({ catalog, cookiePrefs, vmThreads, env }) {
   return [guildThread, ...dms];
 }
 
-export function openDMThread(characterId, catalog) {
-  const state = loadState();
+export function openDMThread(characterId, catalog, env) {
   const c = catalog.find((item) => item.id === characterId);
   if (!c) {
     const err = new Error(`unknown character "${characterId}"`);
@@ -348,9 +391,13 @@ export function openDMThread(characterId, catalog) {
     throw err;
   }
   const id = `dm-${characterId}`;
+  const thread = { id, title: c.name, members: ["owner", characterId], group: false };
+  if (isDemoMode(env)) {
+    return thread;
+  }
+  const state = loadState();
   const existing = (state.threads || []).find((t) => t.id === id);
   if (existing) return existing;
-  const thread = { id, title: c.name, members: ["owner", characterId], group: false };
   state.threads = [...(state.threads || []), thread];
   if (!state.messages[id]) state.messages[id] = [];
   saveState(state);
@@ -358,18 +405,26 @@ export function openDMThread(characterId, catalog) {
 }
 
 export function appendLine({ threadId, from, text, kind = "message", reasoning = "", tool = "", task = "", assignee = "", card_status = "", files = [], catalog = [], senderName = "", env }) {
-  const state = loadState();
-  if (!state.messages[threadId]) state.messages[threadId] = [];
-  state.seq = (state.seq || 0) + 1;
+  const demo = isDemoMode(env);
+  const state = demo ? null : loadState();
+  let seq;
+  if (demo) {
+    globalThis.__devGuildDemoSeq = (globalThis.__devGuildDemoSeq || 0) + 1;
+    seq = globalThis.__devGuildDemoSeq;
+  } else {
+    if (!state.messages[threadId]) state.messages[threadId] = [];
+    state.seq = (state.seq || 0) + 1;
+    seq = state.seq;
+  }
   const person = catalog.find((c) => c.id === from);
   const isOwner = from === "owner";
   const bubbleKind = kind === "system" || kind === "tool" || kind === "card" ? kind : (person ? person.kind : "agent");
   const msg = {
-    seq: state.seq,
-    id: `m_${state.seq}_${Math.random().toString(36).slice(2, 7)}`,
+    seq,
+    id: `m_${seq}_${Math.random().toString(36).slice(2, 7)}`,
     thread: threadId,
     from,
-    name: isOwner ? (senderName || getOwnerName(env)) : (person ? person.name : (senderName || from)),
+    name: isOwner ? (senderName || (demo ? "You" : getOwnerName(env))) : (person ? person.name : (senderName || from)),
     kind: bubbleKind,
     avatar: person ? person.avatar : (isOwner ? "" : "claude.png"),
     color: person ? person.color : (isOwner ? "#0A84FF" : "#8E8E93"),
@@ -384,12 +439,15 @@ export function appendLine({ threadId, from, text, kind = "message", reasoning =
     card_status: card_status || undefined,
     files: files && files.length ? files : undefined,
   };
-  state.messages[threadId] = [...state.messages[threadId], msg];
-  saveState(state);
+  if (!demo) {
+    state.messages[threadId] = [...state.messages[threadId], msg];
+    saveState(state);
+  }
   return msg;
 }
 
-export function getMessages(threadId, after = 0) {
+export function getMessages(threadId, after = 0, env) {
+  if (isDemoMode(env)) return [];
   const state = loadState();
   const all = (state.messages[threadId] || []).map((m) => ({ ...m }));
   let lastOwner = -1;

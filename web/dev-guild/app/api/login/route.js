@@ -1,10 +1,14 @@
 import { timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { cookieOptions, getOwnerToken, sealOwner } from "../../../lib/auth.js";
+import { isDemoMode } from "../../../lib/demo.js";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
+  if (isDemoMode()) {
+    return NextResponse.json({ error: "Sign-in is disabled in public demo mode." }, { status: 401 });
+  }
   const token = getOwnerToken();
   if (!token) {
     return NextResponse.json({ error: "The server has no owner passphrase yet." }, { status: 503 });

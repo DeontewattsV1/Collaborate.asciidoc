@@ -34,7 +34,12 @@ function validEndpointUrl(raw) {
   }
 }
 
+import { isDemoMode } from "../../../../lib/demo.js";
+
 export async function GET(request) {
+  if (isDemoMode()) {
+    return NextResponse.json({ error: "Custom agents are disabled in public demo mode." }, { status: 401 });
+  }
   const token = getOwnerToken();
   const jar = await cookies();
   const auth = checkGuildAuth({ jar, token, authHeader: request.headers.get("authorization") });
@@ -44,6 +49,9 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  if (isDemoMode()) {
+    return NextResponse.json({ error: "Custom agents are disabled in public demo mode." }, { status: 401 });
+  }
   const token = getOwnerToken();
   const jar = await cookies();
   const auth = checkGuildAuth({ jar, token, authHeader: request.headers.get("authorization") });
