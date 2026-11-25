@@ -42,10 +42,18 @@ export function clientIpFromRequest(request) {
   return "127.0.0.1";
 }
 
+const demoKeyCache = new Map();
+
 function demoSigningKey(env) {
   const source = env || process.env;
   const seed = String(source.DEMO_SIGNING_SECRET || source.GOOGLE_GENERATIVE_AI_API_KEY || "dev-guild-demo-local");
-  return crypto.createHash("sha256").update(`dev-guild-demo-rl:${seed}`).digest();
+  let cached = demoKeyCache.get(seed);
+  if (!cached) {
+    cached = crypto.scryptSync(seed, "dev-guild-demo-rl-kdf-v1", 32);
+    if (demoKeyCache.size > 16) demoKeyCache.clear();
+    demoKeyCache.set(seed, cached);
+  }
+  return cached;
 }
 
 export function readDemoCookieTimestamps(cookieVal, { windowMs = DEMO_WINDOW_MS, now = Date.now(), env } = {}) {
