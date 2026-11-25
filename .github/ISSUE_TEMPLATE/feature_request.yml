@@ -1,0 +1,29 @@
+name: Feature Request
+description: Propose a new capability, workflow improvement, or documentation update
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or goal
+      description: What problem are you trying to solve or what capability is missing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the expected behavior, CLI/API changes, or workflow updates.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Affected paths and coordination scope
+      description: Optional list of files or directories likely to change (for `Collaborate-Claim:` planning).
+  - type: textarea
+    id: verification
+    attributes:
+      label: How should this be verified?
+      description: What unit tests, `scripts/check.sh` steps, or live checks would prove it works?
