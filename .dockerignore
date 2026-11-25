@@ -1,0 +1,5 @@
+.git
+.agentterm
+.collab
+**/__pycache__
+*.sqlite*

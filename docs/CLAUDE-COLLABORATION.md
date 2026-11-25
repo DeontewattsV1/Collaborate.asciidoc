@@ -1,22 +1,40 @@
-# Claude Code as one optional collaboration participant
+# Claude Code collaboration runbook
 
-**Current workflow:** `.github/workflows/agent-collaboration.yml` (proposed in PR #35). This provider-neutral workflow coordinates authorized GitHub accounts through [Agent Session Hub #34](https://github.com/DeontewattsV1/Collaborate.asciidoc/issues/34). It **does not invoke Claude or any other external model**, and it does not require an Anthropic API key.
+**Status:** Proposed workflow; not active until merged to the default branch, authenticated, and exercised. A workflow file is not proof that the Claude GitHub App or API authentication is available.
 
-The previous `.github/workflows/claude-collaboration.yml` was specific to Anthropic's `claude-code-action`, required `ANTHROPIC_API_KEY`, and only accepted the repository owner's `@claude` comments. It has been removed from the proposed branch in favor of a single common coordination entry point. Until the new PR is merged, GitHub continues running the workflow currently on the default branch.
+## Owner-controlled activation
 
-## Claude Code session participation
+1. Review and merge the workflow PR only through the live required gates. Do not relax `go-verify`, coordination, or repository rules.
+2. Install/authorize the official [Claude GitHub App](https://github.com/apps/claude) for this repository if not already installed. Claude Code on the web and Claude Code GitHub Actions are separate entry points; one being available does not prove the other is set up.
+3. Set the repository Actions secret `ANTHROPIC_API_KEY` from the Anthropic Console under GitHub **Settings → Secrets and variables → Actions**. Never paste it into issues, chat, PRs, or committed files. Anthropic also documents OAuth-token and workload-federation alternatives; the proposed workflow specifically uses the API-key route. API use may incur provider charges.
+4. On an issue or PR *conversation comment* from the repository owner, mention `@claude` and give a bounded request, target paths, acceptance criteria, and tests. The workflow is deliberately owner-triggered; external comments and other bots do not start it. It also refuses fork PRs.
+5. Check the `claude-code-collaboration` Actions run, the resulting branch/PR comments and commits, and the independent `go-verify` and `coordinate` checks. A run that was skipped or failed is not a success. Do not merge on the basis of AI self-review.
 
-1. Install/authorize the official Claude GitHub App through your provider's supported authentication flow, with repository permissions you approve. It must act through a distinct identifiable GitHub account, such as `claude[bot]`, for its account identity to be verified independently of the repository owner's account.
-2. Confirm the GitHub account ID, login and type against the protected-base `.github/session-principals.json` allowlist. Only the account principal is authenticated by the GitHub API. The `role` label is self-reported and is **not** a cryptographic model identity claim.
-3. Post a standalone `Collaborate-Session:` join event on issue #34 as described in [AGENT-SESSION.md](AGENT-SESSION.md). Send heartbeats at least hourly, `leave` on shutdown, and a new `join` after restarting.
-4. Read all open PR leases, review comments and required CI results before editing a path. Use a draft PR and `Collaborate-Claim:` entries as directed in [GITHUB-AGENTS.md](GITHUB-AGENTS.md). Leave review artifacts with exact commit SHA and PASS, FAIL or NOT RUN evidence.
+## Suggested division of responsibility
 
-## Optional external model execution
+- **Claude Code:** implement a bounded change, follow `AGENTS.md`/`CLAUDE.md`, and report evidence on its own draft PR.
+- **ChatGPT/Codex:** independently examine the changed files and review test results, propose adversarial cases, and report discrepancies without claiming independent human approval.
+- **Human maintainer:** authorize scope and expenditures, provide credentials only through platform secrets, review changes, and decide whether to merge.
 
-Coordinating an already connected agent does not start an Anthropic runtime. To **invoke** Claude Code via GitHub Actions, an administrator must separately set up the official Anthropic integration and provide an accepted credential securely (for example an Actions secret `ANTHROPIC_API_KEY`), review its GitHub token permissions, and authorize costs and execution scope. Other models similarly require their own separately authorized GitHub App, token, or provider adapter. No agent may borrow an unrelated model's credential or impersonate its identity.
+## Reusable task handoff
 
-The current neutral workflow does not dispatch or pay for such sessions. When a model provider runs elsewhere and posts an authorized GitHub comment, the hub reconciles that principal's participation. It is an asynchronous GitHub state exchange, **not** a real-time distributed execution engine or an authenticated proof of which model generated the comment.
+~~~text
+Objective: [one falsifiable task]
+Scope: [exact files and excluded files]
+Collaborate-Claim: [path]
+Acceptance tests: [exact commands or reproducible manual steps]
+Security invariant: [what must never regress]
+Evidence: [test logs, PR/commit links; NOT RUN where unavailable]
+Review request: [what the second agent should try to falsify]
+Human approval needed for: [any merge, secret, deployment or ruleset change]
+~~~
 
-## Security and review
+## Initial suggested pilot
 
-Never send secrets, private code or identity proofs in public GitHub comments. Do not merge, modify live rulesets, enable bypasses or weaken `go-verify` based on an agent's unverified claim. A successful hub workflow confirms only the GitHub event-processing check; model-host provenance, independent review and production-readiness require separate evidence.
+Ask Claude to review the existing path-claim checker **without changing its behavior** and identify one reproducible counterexample, or explicitly report none found within the tested cases. Review `internal/ghcoord/`, `docs/GITHUB-AGENTS.md`, and the live workflow as read-only inputs. Request a new scoped PR with a regression test only if a concrete bug is found. This is an **unrun proposal**, not an external Claude assessment.
+
+## Security limitations
+
+GitHub `contents: write`, `issues: write`, `pull-requests: write`, and `id-token: write` apply to the action job because it needs to collaborate in issues and PRs. Only the repository owner can trigger this workflow. The owner-trigger filter reduces accidental/public activation but does not sandbox the model, and GitHub issue/PR text can still contain prompt injection. The provider action's own access checks, branch protection, separate CI, and human review remain essential.
+
+Official reference: https://github.com/anthropics/claude-code-action/tree/main/docs
