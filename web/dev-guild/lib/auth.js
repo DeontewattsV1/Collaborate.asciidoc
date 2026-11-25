@@ -1,4 +1,18 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
+
+const keyCache = new Map();
+
+function deriveKey(secret) {
+  const s = String(secret || "");
+  if (!s) return Buffer.alloc(0);
+  let cached = keyCache.get(s);
+  if (!cached) {
+    cached = scryptSync(s, "dev-guild-kdf-v1", 32);
+    if (keyCache.size > 32) keyCache.clear();
+    keyCache.set(s, cached);
+  }
+  return cached;
+}
 
 export function getOwnerToken(env) {
   const source = env || process.env;
@@ -22,7 +36,7 @@ function safeEqual(aStr, bStr) {
 }
 
 export function sealOwner(token) {
-  return createHmac("sha256", token).update("dev-guild-owner").digest("hex");
+  return createHmac("sha256", deriveKey(token)).update("dev-guild-owner").digest("hex");
 }
 
 export function isOwnerCookie(got, token) {
@@ -32,7 +46,7 @@ export function isOwnerCookie(got, token) {
 
 export function inviteCodeFor(token) {
   if (!token) return "";
-  return "inv_" + createHmac("sha256", token).update("dev-guild-invite-v1").digest("hex").slice(0, 20);
+  return "inv_" + createHmac("sha256", deriveKey(token)).update("dev-guild-invite-v1").digest("hex").slice(0, 20);
 }
 
 export function isValidInviteCode(code, token) {
@@ -42,7 +56,7 @@ export function isValidInviteCode(code, token) {
 
 function signPayload(payload, purpose, token) {
   const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = createHmac("sha256", token).update(`${purpose}:${data}`).digest("base64url");
+  const sig = createHmac("sha256", deriveKey(token)).update(`${purpose}:${data}`).digest("base64url");
   return `${data}.${sig}`;
 }
 
@@ -50,7 +64,7 @@ function verifyPayload(raw, purpose, token) {
   if (!token || !raw || !String(raw).includes(".")) return null;
   const [data, sig] = String(raw).split(".");
   if (!data || !sig) return null;
-  const want = createHmac("sha256", token).update(`${purpose}:${data}`).digest("base64url");
+  const want = createHmac("sha256", deriveKey(token)).update(`${purpose}:${data}`).digest("base64url");
   if (!safeEqual(sig, want)) return null;
   try {
     return JSON.parse(Buffer.from(data, "base64url").toString("utf8"));
@@ -81,7 +95,7 @@ export function cookieOptions(maxAge = 60 * 60 * 24 * 30) {
 
 export function encryptCustomAgents(agents, token) {
   if (!token) return "";
-  const key = createHash("sha256").update(`${token}|custom-agents`).digest();
+  const key = deriveKey(token);
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const json = JSON.stringify(agents || []);
@@ -96,7 +110,7 @@ export function decryptCustomAgents(raw, token) {
   if (parts.length !== 3) return [];
   try {
     const [ivB, tagB, encB] = parts;
-    const key = createHash("sha256").update(`${token}|custom-agents`).digest();
+    const key = deriveKey(token);
     const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB, "base64url"));
     decipher.setAuthTag(Buffer.from(tagB, "base64url"));
     const plain = Buffer.concat([decipher.update(Buffer.from(encB, "base64url")), decipher.final()]).toString("utf8");
@@ -109,6 +123,7 @@ export function decryptCustomAgents(raw, token) {
 
 export function sealGroupPrefs(prefs, token) {
   const clean = {
+    version: Number((prefs && prefs.version) || 0) || 0,
     title: String((prefs && prefs.title) || "").trim().slice(0, 60),
     ownerName: String((prefs && prefs.ownerName) || "").trim().slice(0, 40),
     setupDone: Boolean(prefs && prefs.setupDone),
@@ -121,9 +136,10 @@ export function sealGroupPrefs(prefs, token) {
 export function readGroupPrefs(raw, token) {
   const data = verifyPayload(raw, "dev-guild-group-prefs", token);
   if (!data || typeof data !== "object") {
-    return { title: "", ownerName: "", setupDone: false, added: [], removed: [] };
+    return { version: 0, title: "", ownerName: "", setupDone: false, added: [], removed: [] };
   }
   return {
+    version: Number(data.version || 0) || 0,
     title: String(data.title || "").trim().slice(0, 60),
     ownerName: String(data.ownerName || "").trim().slice(0, 40),
     setupDone: Boolean(data.setupDone),

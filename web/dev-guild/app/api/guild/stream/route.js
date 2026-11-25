@@ -154,7 +154,10 @@ export async function POST(request) {
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
   const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
   const prefs = mergeGroupPrefs(cookiePrefs);
-  const vmChars = await mirrorVm(token, "GET", "/v1/characters");
+  const [vmChars, vmThreads] = await Promise.all([
+    mirrorVm(token, "GET", "/v1/characters"),
+    mirrorVm(token, "GET", "/v1/threads"),
+  ]);
   const catalog = buildCatalog({
     env: process.env,
     customAgents: cookieAgents,
@@ -162,7 +165,11 @@ export async function POST(request) {
     includeSecrets: true,
     groupTitle: prefs.title,
   });
-  const threads = listThreads({ catalog, cookiePrefs });
+  const threads = listThreads({
+    catalog,
+    cookiePrefs,
+    vmThreads: vmThreads && vmThreads.threads,
+  });
   const thread = threads.find((t) => t.id === threadId) || {
     id: threadId,
     group: threadId === "guild",

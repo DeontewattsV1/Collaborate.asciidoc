@@ -5,7 +5,11 @@ import { BUILTIN_CAST, statusFor, systemPromptFor } from "./cast.js";
 const STATE_PATH = "/tmp/dev-guild-state.json";
 
 function emptyPrefs() {
-  return { title: "", ownerName: "", setupDone: false, added: [], removed: [] };
+  return { version: 0, title: "", ownerName: "", setupDone: false, added: [], removed: [] };
+}
+
+function nextVersion(prevVersion) {
+  return Math.max(Number(prevVersion || 0) + 1, Date.now());
 }
 
 function initialState() {
@@ -155,25 +159,29 @@ export function registerInvitedParticipant(participant) {
 
 export function mergeGroupPrefs(cookiePrefs, env) {
   const state = loadState();
-  const sp = state.groupPrefs || emptyPrefs();
-  const cp = cookiePrefs || emptyPrefs();
+  const sp = { ...emptyPrefs(), ...(state.groupPrefs || {}) };
+  const cp = { ...emptyPrefs(), ...(cookiePrefs || {}) };
   const hasCookiePrefs = Boolean(
-    cp.setupDone || cp.title || cp.ownerName || (cp.added && cp.added.length) || (cp.removed && cp.removed.length),
+    cp.version || cp.setupDone || cp.title || cp.ownerName || (cp.added && cp.added.length) || (cp.removed && cp.removed.length),
   );
-  const removed = new Set(
-    hasCookiePrefs ? (cp.removed || []) : [...(sp.removed || []), ...(cp.removed || [])],
-  );
+  const cpVer = Number(cp.version || 0) || 0;
+  const spVer = Number(sp.version || 0) || 0;
+  const useCookie = hasCookiePrefs && cpVer >= spVer;
+  const primary = useCookie ? cp : sp;
+  const secondary = useCookie ? sp : cp;
+  const removed = new Set(primary.removed || []);
   const added = [];
   const seen = new Set();
-  for (const id of [...(cp.added || []), ...(sp.added || [])]) {
+  for (const id of primary.added || []) {
     if (!id || id === "owner" || removed.has(id) || seen.has(id)) continue;
     seen.add(id);
     added.push(id);
   }
   return {
-    title: String(cp.title || sp.title || getGroupName(env)).trim().slice(0, 60) || "Dev Guild",
-    ownerName: String(cp.ownerName || sp.ownerName || getOwnerName(env)).trim().slice(0, 40) || "Owner",
-    setupDone: Boolean(cp.setupDone || sp.setupDone),
+    version: Math.max(cpVer, spVer),
+    title: String(primary.title || secondary.title || getGroupName(env)).trim().slice(0, 60) || "Dev Guild",
+    ownerName: String(primary.ownerName || secondary.ownerName || getOwnerName(env)).trim().slice(0, 40) || "Owner",
+    setupDone: Boolean(primary.setupDone || (!useCookie && secondary.setupDone)),
     added,
     removed: Array.from(removed),
   };
@@ -238,6 +246,7 @@ export function updateGroupMember(id, action, cookiePrefs, env) {
     prefs.added = prefs.added.filter((item) => item !== id);
     if (!prefs.removed.includes(id)) prefs.removed.push(id);
   }
+  prefs.version = nextVersion(prefs.version);
   state.groupPrefs = prefs;
   saveState(state);
   return prefs;
@@ -277,6 +286,7 @@ export function configureGroup({ title, ownerName, members, setupDone, replaceMe
   }
 
   const prefs = {
+    version: nextVersion(prev.version),
     title: nextTitle,
     ownerName: nextOwner,
     setupDone: setupDone !== undefined ? Boolean(setupDone) : prev.setupDone,

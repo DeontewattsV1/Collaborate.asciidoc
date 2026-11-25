@@ -210,13 +210,22 @@ async function handleProxy(request, { params }) {
     const text = String(body.text || "").trim();
     if (!text) return NextResponse.json({ error: "message is empty" }, { status: 400 });
 
+    const [vmChars, vmThreads] = await Promise.all([
+      tryVm(token, "GET", "/v1/characters"),
+      tryVm(token, "GET", "/v1/threads"),
+    ]);
     const catalog = buildCatalog({
       env: process.env,
       customAgents: cookieAgents,
+      vmCharacters: vmChars && vmChars.characters,
       includeSecrets: true,
       groupTitle: prefs.title,
     });
-    const threads = listThreads({ catalog, cookiePrefs });
+    const threads = listThreads({
+      catalog,
+      cookiePrefs,
+      vmThreads: vmThreads && vmThreads.threads,
+    });
     const thread = threads.find((t) => t.id === threadId) || {
       id: threadId,
       group: threadId === "guild",

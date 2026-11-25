@@ -268,6 +268,20 @@ test("first-run deploy starts empty and supports custom group name and picked me
   assert.equal(configured.ownerName, "Alex");
   assert.equal(configured.setupDone, true);
   assert.deepEqual(configured.members, ["owner", "claude", "grok"]);
+
+  // Simulate another warm server instance still holding stale "claude" while
+  // the client presents a newer replacement cookie clearing members to [].
+  const clearedPrefs = {
+    version: roundTrip.version + 10,
+    title: "Backend Crew",
+    ownerName: "Alex",
+    setupDone: true,
+    added: [],
+    removed: [],
+  };
+  const clearedCookie = readGroupPrefs(sealGroupPrefs(clearedPrefs, token), token);
+  const afterReplace = listThreads({ catalog, cookiePrefs: clearedCookie, env: {} }).find((t) => t.id === "guild");
+  assert.deepEqual(afterReplace.members, ["owner"]);
 });
 
 test("free presets activate only when their free key is set and show needs key otherwise", () => {
