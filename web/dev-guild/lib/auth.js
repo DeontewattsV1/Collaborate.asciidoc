@@ -1,8 +1,32 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
+
+const keyCache = new Map();
+
+function deriveKey(secret) {
+  const s = String(secret || "");
+  if (!s) return Buffer.alloc(0);
+  let cached = keyCache.get(s);
+  if (!cached) {
+    cached = scryptSync(s, "dev-guild-kdf-v1", 32);
+    if (keyCache.size > 32) keyCache.clear();
+    keyCache.set(s, cached);
+  }
+  return cached;
+}
 
 export function getOwnerToken(env) {
   const source = env || process.env;
   return String(source.GUILD_OWNER_TOKEN || source.GUILD_ACCESS_CODE || "").trim();
+}
+
+export function getOwnerName(env) {
+  const source = env || process.env;
+  return String(source.GUILD_OWNER_NAME || "").trim().slice(0, 40) || "Owner";
+}
+
+export function getGroupName(env) {
+  const source = env || process.env;
+  return String(source.GUILD_GROUP_NAME || "").trim().slice(0, 60) || "Dev Guild";
 }
 
 function safeEqual(aStr, bStr) {
@@ -12,7 +36,7 @@ function safeEqual(aStr, bStr) {
 }
 
 export function sealOwner(token) {
-  return createHmac("sha256", token).update("dev-guild-owner").digest("hex");
+  return createHmac("sha256", deriveKey(token)).update("dev-guild-owner").digest("hex");
 }
 
 export function isOwnerCookie(got, token) {
@@ -22,7 +46,7 @@ export function isOwnerCookie(got, token) {
 
 export function inviteCodeFor(token) {
   if (!token) return "";
-  return "inv_" + createHmac("sha256", token).update("dev-guild-invite-v1").digest("hex").slice(0, 20);
+  return "inv_" + createHmac("sha256", deriveKey(token)).update("dev-guild-invite-v1").digest("hex").slice(0, 20);
 }
 
 export function isValidInviteCode(code, token) {
@@ -31,19 +55,29 @@ export function isValidInviteCode(code, token) {
 }
 
 function signPayload(payload, purpose, token) {
-  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = createHmac("sha256", token).update(`${purpose}:${data}`).digest("base64url");
-  return `${data}.${sig}`;
+  if (!token) return "";
+  const key = deriveKey(token);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(Buffer.from(String(purpose || ""), "utf8"));
+  const json = JSON.stringify(payload);
+  const enc = Buffer.concat([cipher.update(json, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("base64url")}.${tag.toString("base64url")}.${enc.toString("base64url")}`;
 }
 
 function verifyPayload(raw, purpose, token) {
-  if (!token || !raw || !String(raw).includes(".")) return null;
-  const [data, sig] = String(raw).split(".");
-  if (!data || !sig) return null;
-  const want = createHmac("sha256", token).update(`${purpose}:${data}`).digest("base64url");
-  if (!safeEqual(sig, want)) return null;
+  if (!token || !raw) return null;
+  const parts = String(raw).split(".");
+  if (parts.length !== 3) return null;
   try {
-    return JSON.parse(Buffer.from(data, "base64url").toString("utf8"));
+    const [ivB, tagB, encB] = parts;
+    const key = deriveKey(token);
+    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB, "base64url"));
+    decipher.setAAD(Buffer.from(String(purpose || ""), "utf8"));
+    decipher.setAuthTag(Buffer.from(tagB, "base64url"));
+    const plain = Buffer.concat([decipher.update(Buffer.from(encB, "base64url")), decipher.final()]).toString("utf8");
+    return JSON.parse(plain);
   } catch {
     return null;
   }
@@ -71,7 +105,7 @@ export function cookieOptions(maxAge = 60 * 60 * 24 * 30) {
 
 export function encryptCustomAgents(agents, token) {
   if (!token) return "";
-  const key = createHash("sha256").update(`${token}|custom-agents`).digest();
+  const key = deriveKey(token);
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const json = JSON.stringify(agents || []);
@@ -86,7 +120,7 @@ export function decryptCustomAgents(raw, token) {
   if (parts.length !== 3) return [];
   try {
     const [ivB, tagB, encB] = parts;
-    const key = createHash("sha256").update(`${token}|custom-agents`).digest();
+    const key = deriveKey(token);
     const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB, "base64url"));
     decipher.setAuthTag(Buffer.from(tagB, "base64url"));
     const plain = Buffer.concat([decipher.update(Buffer.from(encB, "base64url")), decipher.final()]).toString("utf8");
@@ -98,22 +132,36 @@ export function decryptCustomAgents(raw, token) {
 }
 
 export function sealGroupPrefs(prefs, token) {
-  return signPayload(prefs || { added: [], removed: [] }, "dev-guild-group-prefs", token);
+  const clean = {
+    version: Number((prefs && prefs.version) || 0) || 0,
+    title: String((prefs && prefs.title) || "").trim().slice(0, 60),
+    ownerName: String((prefs && prefs.ownerName) || "").trim().slice(0, 40),
+    setupDone: Boolean(prefs && prefs.setupDone),
+    added: Array.isArray(prefs && prefs.added) ? prefs.added.map((id) => String(id)).slice(0, 128) : [],
+    removed: Array.isArray(prefs && prefs.removed) ? prefs.removed.map((id) => String(id)).slice(0, 128) : [],
+  };
+  return signPayload(clean, "dev-guild-group-prefs", token);
 }
 
 export function readGroupPrefs(raw, token) {
   const data = verifyPayload(raw, "dev-guild-group-prefs", token);
-  if (!data || typeof data !== "object") return { added: [], removed: [] };
+  if (!data || typeof data !== "object") {
+    return { version: 0, title: "", ownerName: "", setupDone: false, added: [], removed: [] };
+  }
   return {
-    added: Array.isArray(data.added) ? data.added : [],
-    removed: Array.isArray(data.removed) ? data.removed : [],
+    version: Number(data.version || 0) || 0,
+    title: String(data.title || "").trim().slice(0, 60),
+    ownerName: String(data.ownerName || "").trim().slice(0, 40),
+    setupDone: Boolean(data.setupDone),
+    added: Array.isArray(data.added) ? data.added.map((id) => String(id)) : [],
+    removed: Array.isArray(data.removed) ? data.removed.map((id) => String(id)) : [],
   };
 }
 
-export function checkGuildAuth({ jar, token, inviteParam, authHeader }) {
+export function checkGuildAuth({ jar, token, inviteParam, authHeader, env }) {
   if (!token) return { ok: false, status: 503, error: "The server has no access passphrase configured." };
   if (isOwnerCookie(jar?.get("guild_session")?.value || "", token)) {
-    return { ok: true, role: "owner", participant: { id: "owner", name: "Deonte" } };
+    return { ok: true, role: "owner", participant: { id: "owner", name: getOwnerName(env) } };
   }
   const inviteCookie = readInviteSession(jar?.get("guild_invite")?.value || "", token);
   if (inviteCookie) {

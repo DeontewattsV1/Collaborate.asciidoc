@@ -22,9 +22,10 @@ import (
 )
 
 const (
-	ownerID     = "owner"
-	ownerName   = "Deonte"
-	guildThread = "guild"
+	ownerID           = "owner"
+	defaultOwnerName  = "Owner"
+	defaultGroupTitle = "Dev Guild"
+	guildThread       = "guild"
 )
 
 var mentionRE = regexp.MustCompile(`@([a-z0-9-]{2,32})`)
@@ -78,6 +79,20 @@ func (s *Service) PublicKey() string {
 	return hex.EncodeToString(s.Term.PublicKey())
 }
 
+func (s *Service) ownerDisplayName() string {
+	if v := strings.TrimSpace(s.getenv("GUILD_OWNER_NAME")); v != "" {
+		return v
+	}
+	return defaultOwnerName
+}
+
+func (s *Service) groupTitle() string {
+	if v := strings.TrimSpace(s.getenv("GUILD_GROUP_NAME")); v != "" {
+		return v
+	}
+	return defaultGroupTitle
+}
+
 func (s *Service) ensureGuild() error {
 	if _, ok := s.thread(guildThread); ok {
 		return nil
@@ -87,7 +102,7 @@ func (s *Service) ensureGuild() error {
 		members = append(members, c.ID)
 	}
 	_, err := s.append(agentterm.ChatBody{
-		Thread: guildThread, ID: "thread-guild", Kind: "thread", Title: "The Dev Guild", Members: members,
+		Thread: guildThread, ID: "thread-guild", Kind: "thread", Title: s.groupTitle(), Members: members,
 	})
 	return err
 }
@@ -231,21 +246,21 @@ func (s *Service) Characters() []CharacterView {
 	out := make([]CharacterView, 0, len(s.Reg.All()))
 	for _, c := range s.Reg.All() {
 		p := c.Presence(s.getenv, s.Demo)
-		out = append(out, CharacterView{Character: c, Online: p.Online, Note: p.Note, System: c.SystemPrompt(s.Reg.Agents())})
+		out = append(out, CharacterView{Character: c, Online: p.Online, Note: p.Note, System: c.SystemPromptFor(s.Reg.Agents(), s.groupTitle())})
 	}
 	return out
 }
 
 func (s *Service) view(id string) CharacterView {
 	if id == ownerID {
-		return CharacterView{Character: Character{ID: ownerID, Name: ownerName, Kind: "owner", Color: "#0A84FF"}, Online: true, Note: "You"}
+		return CharacterView{Character: Character{ID: ownerID, Name: s.ownerDisplayName(), Kind: "owner", Color: "#0A84FF"}, Online: true, Note: "You"}
 	}
 	c, ok := s.Reg.Get(id)
 	if !ok {
 		return CharacterView{Character: Character{ID: id, Name: id, Kind: "system"}}
 	}
 	p := c.Presence(s.getenv, s.Demo)
-	return CharacterView{Character: c, Online: p.Online, Note: p.Note, System: c.SystemPrompt(s.Reg.Agents())}
+	return CharacterView{Character: c, Online: p.Online, Note: p.Note, System: c.SystemPromptFor(s.Reg.Agents(), s.groupTitle())}
 }
 
 // RecordCharacter appends a reply that was already produced (for example by
@@ -401,13 +416,13 @@ func (s *Service) bubble(e agentterm.Entry, b agentterm.ChatBody) Message {
 	}
 }
 
-// Post records Deonte's message and, when sync is set, the replies.
+// Post records the owner's message and, when sync is set, the replies.
 // Async callers should invoke Respond afterwards.
 func (s *Service) Post(ctx context.Context, thread, text string, sync bool) (Message, error) {
 	return s.PostWithFiles(ctx, thread, text, nil, sync)
 }
 
-// PostWithFiles records Deonte's message. File names are logged; bytes are not.
+// PostWithFiles records the owner's message. File names are logged; bytes are not.
 func (s *Service) PostWithFiles(ctx context.Context, thread, text string, files []string, sync bool) (Message, error) {
 	text = strings.TrimSpace(text)
 	if text == "" && len(files) == 0 {
@@ -518,7 +533,7 @@ func (s *Service) Respond(ctx context.Context, threadID string) error {
 		}
 		turns++
 		prompt := lastOwner
-		system := c.SystemPrompt(peers)
+		system := c.SystemPromptFor(peers, s.groupTitle())
 		prior := s.prior(c.ID, history)
 		text, tokens, err := s.complete(ctx, Job{Character: c, Thread: threadID, System: system, Prompt: prompt, Prior: prior})
 		if err != nil {
@@ -571,7 +586,7 @@ func (s *Service) prior(self string, history []agentterm.ChatBody) []adapter.Tur
 		}
 		name := b.From
 		if b.From == ownerID {
-			name = ownerName
+			name = s.ownerDisplayName()
 		} else if c, ok := s.Reg.Get(b.From); ok {
 			name = c.Name
 		}

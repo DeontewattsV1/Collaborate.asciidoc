@@ -56,7 +56,7 @@ func mcpHandler(in rpcInput) (any, *rpcError) {
 		if p.ProtocolVersion == "2024-11-05" {
 			v = p.ProtocolVersion
 		}
-		return map[string]any{"protocolVersion": v, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]string{"name": "collab", "version": "0.1.0"}}, nil
+		return map[string]any{"protocolVersion": v, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]string{"name": "collab", "version": "0.2.0"}}, nil
 	case "ping":
 		return map[string]any{}, nil
 	case "tools/list":

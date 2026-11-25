@@ -13,6 +13,7 @@ import {
   appendLine,
   buildCatalog,
   mergeCustomAgents,
+  mergeGroupPrefs,
   sanitizeCustomAgents,
   saveCustomAgent,
   slugifyAgentId,
@@ -75,7 +76,9 @@ export async function POST(request) {
   }
 
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
-  const existing = buildCatalog({ env: process.env, customAgents: cookieAgents });
+  const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
+  const prefs = mergeGroupPrefs(cookiePrefs);
+  const existing = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
   const existingIds = new Set(existing.map((c) => c.id));
   const id = slugifyAgentId(name, existingIds);
 
@@ -90,7 +93,7 @@ export async function POST(request) {
     quirk: "Brings its own custom instructions into the room.",
     catchphrase,
     role,
-    talks: "Replies directly to Deonte and collaborates with the rest of The Dev Guild.",
+    talks: `Replies directly to the owner and collaborates with the rest of ${prefs.title}.`,
     expertise: persona || role,
     persona,
     endpointType,
@@ -105,16 +108,15 @@ export async function POST(request) {
 
   saveCustomAgent(agent);
   const nextAgents = mergeCustomAgents([...cookieAgents, agent]);
-  const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
   const nextPrefs = updateGroupMember(id, "add", cookiePrefs);
-  const catalog = buildCatalog({ env: process.env, customAgents: nextAgents });
+  const catalog = buildCatalog({ env: process.env, customAgents: nextAgents, groupTitle: nextPrefs.title });
   const view = catalog.find((c) => c.id === id);
 
   appendLine({
     threadId: "guild",
     from: "system",
     kind: "system",
-    text: `${name} (@${id}) was added to The Dev Guild.`,
+    text: `${name} (@${id}) was added to ${nextPrefs.title}.`,
     catalog,
   });
 

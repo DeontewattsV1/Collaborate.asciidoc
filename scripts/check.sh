@@ -36,7 +36,7 @@ trap 'rm -rf "$out"' EXIT
 step "ruleset policy"            python3 .github/scripts/validate_ruleset.py
 step "repository hygiene"        python3 scripts/repo_hygiene.py
 step "python tests (scripts/)"   python3 -m unittest discover -s scripts -p 'test_*.py'
-step "dev guild model tests"    bash -c 'cd web/dev-guild && npm ci --ignore-scripts --no-audit --no-fund && node --test lib/models.test.js'
+step "dev guild web tests/build" bash -c 'cd web/dev-guild && npm ci --ignore-scripts --no-audit --no-fund && npm test && npm run build'
 step "python tests (tests/)"     python3 -m unittest discover -s tests -p 'test_*.py'
 step "gofmt"                     bash -c 'files=$(gofmt -l cmd internal); [ -z "$files" ] || { echo "$files"; exit 1; }'
 step "go vet"                    go vet ./...

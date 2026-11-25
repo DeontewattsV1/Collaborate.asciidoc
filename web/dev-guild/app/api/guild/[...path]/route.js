@@ -19,9 +19,11 @@ import { languageModel } from "../../../../lib/providers.js";
 import {
   appendLine,
   buildCatalog,
+  configureGroup,
   getMessages,
   hasVmBackend,
   listThreads,
+  mergeGroupPrefs,
   openDMThread,
   updateGroupMember,
   vmFetch,
@@ -57,6 +59,7 @@ async function handleProxy(request, { params }) {
   const joined = parts.join("/");
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
   const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
+  const prefs = mergeGroupPrefs(cookiePrefs);
 
   // GET /api/guild/v1/characters
   if (request.method === "GET" && joined === "v1/characters") {
@@ -66,6 +69,7 @@ async function handleProxy(request, { params }) {
       customAgents: cookieAgents,
       vmCharacters: vm && vm.characters,
       includeSecrets: false,
+      groupTitle: prefs.title,
     });
     return NextResponse.json({ characters });
   }
@@ -78,6 +82,7 @@ async function handleProxy(request, { params }) {
       env: process.env,
       customAgents: cookieAgents,
       vmCharacters: vmChars && vmChars.characters,
+      groupTitle: prefs.title,
     });
     const threads = listThreads({
       catalog,
@@ -97,13 +102,62 @@ async function handleProxy(request, { params }) {
     }
     const vm = await tryVm(token, "POST", "/v1/threads", body);
     if (vm && vm.id) return NextResponse.json(vm);
-    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents });
+    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
     try {
       const thread = openDMThread(String(body.with || ""), catalog);
       return NextResponse.json(thread);
     } catch (err) {
       return NextResponse.json({ error: err.message }, { status: err.status || 400 });
     }
+  }
+
+  // POST /api/guild/v1/group (create/configure or rename group chat)
+  if (request.method === "POST" && joined === "v1/group") {
+    if (auth.role !== "owner") {
+      return NextResponse.json({ error: "Only the group owner can update group settings." }, { status: 403 });
+    }
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "bad json" }, { status: 400 });
+    }
+    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
+    const wasSetupDone = Boolean(prefs.setupDone);
+    const nextPrefs = configureGroup(
+      {
+        title: body.title,
+        ownerName: body.ownerName,
+        members: Array.isArray(body.members) ? body.members : undefined,
+        setupDone: body.setupDone !== undefined ? Boolean(body.setupDone) : true,
+        replaceMembers: Boolean(body.replaceMembers),
+      },
+      cookiePrefs,
+      catalog,
+    );
+    const threads = listThreads({ catalog, cookiePrefs: nextPrefs });
+    const guild = threads.find((t) => t.id === "guild");
+    const memberCount = guild ? Math.max(guild.members.length - 1, 0) : 0;
+    if (!wasSetupDone && nextPrefs.setupDone) {
+      appendLine({
+        threadId: "guild",
+        from: "system",
+        kind: "system",
+        text: `${nextPrefs.ownerName} created "${nextPrefs.title}"${memberCount ? ` with ${memberCount} member${memberCount === 1 ? "" : "s"}.` : ". Tap + Add / Invite to pick members."}`,
+        catalog,
+      });
+    }
+    const res = NextResponse.json({
+      ok: true,
+      group: {
+        title: nextPrefs.title,
+        ownerName: nextPrefs.ownerName,
+        setupDone: nextPrefs.setupDone,
+        members: guild ? guild.members : ["owner"],
+      },
+    });
+    res.cookies.set("guild_group_prefs", sealGroupPrefs(nextPrefs, token), cookieOptions());
+    return res;
   }
 
   // POST /api/guild/v1/group/members (add/remove character from group)
@@ -116,7 +170,7 @@ async function handleProxy(request, { params }) {
     }
     const id = String(body.id || "").trim();
     const action = body.action === "remove" ? "remove" : "add";
-    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents });
+    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
     const character = catalog.find((c) => c.id === id);
     if (!character) {
       return NextResponse.json({ error: "unknown character" }, { status: 400 });
@@ -156,16 +210,30 @@ async function handleProxy(request, { params }) {
     const text = String(body.text || "").trim();
     if (!text) return NextResponse.json({ error: "message is empty" }, { status: 400 });
 
-    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, includeSecrets: true });
-    const threads = listThreads({ catalog, cookiePrefs });
+    const [vmChars, vmThreads] = await Promise.all([
+      tryVm(token, "GET", "/v1/characters"),
+      tryVm(token, "GET", "/v1/threads"),
+    ]);
+    const catalog = buildCatalog({
+      env: process.env,
+      customAgents: cookieAgents,
+      vmCharacters: vmChars && vmChars.characters,
+      includeSecrets: true,
+      groupTitle: prefs.title,
+    });
+    const threads = listThreads({
+      catalog,
+      cookiePrefs,
+      vmThreads: vmThreads && vmThreads.threads,
+    });
     const thread = threads.find((t) => t.id === threadId) || {
       id: threadId,
       group: threadId === "guild",
-      members: catalog.map((c) => c.id),
+      members: ["owner"],
     };
 
     const senderId = auth.role === "owner" ? "owner" : (auth.participant && auth.participant.id) || "guest";
-    const senderName = auth.role === "owner" ? "Deonte" : (auth.participant && auth.participant.name) || "Guest";
+    const senderName = auth.role === "owner" ? prefs.ownerName : (auth.participant && auth.participant.name) || "Guest";
     const posted = appendLine({
       threadId,
       from: senderId,
