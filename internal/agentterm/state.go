@@ -152,6 +152,8 @@ func (s *State) apply(e Entry, t time.Time) error {
 		}
 		delete(s.Execs, b.Request)
 		return nil
+	case KindChat:
+		return validateChat(e.Body)
 	}
 	if !agentKinds[e.Kind] {
 		return fmt.Errorf("unknown kind %q", e.Kind)
@@ -430,6 +432,50 @@ func (s *State) covered(sess *Session, p string) bool {
 		}
 	}
 	return false
+}
+
+var chatIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$`)
+
+func validateChat(body string) error {
+	var b ChatBody
+	if err := strictJSON(body, &b); err != nil {
+		return err
+	}
+	if !chatIDPattern.MatchString(b.Thread) || !chatIDPattern.MatchString(b.ID) {
+		return errors.New("chat: thread and id are required")
+	}
+	switch b.Kind {
+	case "thread":
+		if b.Title == "" || len(b.Title) > 80 || len(b.Members) == 0 || len(b.Members) > maxPaths {
+			return errors.New("chat: thread needs a title and 1-50 members")
+		}
+		for _, m := range b.Members {
+			if !chatIDPattern.MatchString(m) {
+				return errors.New("chat: bad member id")
+			}
+		}
+	case "message", "system":
+		if b.From == "" || !chatIDPattern.MatchString(b.From) {
+			return errors.New("chat: from is required")
+		}
+		if b.Text == "" || len(b.Text) > maxText {
+			return errors.New("chat: text is required (max 4000 bytes)")
+		}
+		if len(b.Mentions) > 8 {
+			return errors.New("chat: too many mentions")
+		}
+		for _, m := range b.Mentions {
+			if !chatIDPattern.MatchString(m) {
+				return errors.New("chat: bad mention")
+			}
+		}
+		if b.Tokens < 0 {
+			return errors.New("chat: negative token count")
+		}
+	default:
+		return errors.New("chat: kind must be thread, message, or system")
+	}
+	return nil
 }
 
 func strictJSON(body string, v any) error {

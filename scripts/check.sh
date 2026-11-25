@@ -45,7 +45,8 @@ if [ "$quick" = false ]; then
 fi
 step "build binaries"            bash -c "go build -trimpath -buildvcs=false -o '$out/collaborate' ./cmd/collaborate \
                                    && go build -trimpath -buildvcs=false -o '$out/collab' ./cmd/collab \
-                                   && go build -trimpath -buildvcs=false -o '$out/agentterm' ./cmd/agentterm"
+                                   && go build -trimpath -buildvcs=false -o '$out/agentterm' ./cmd/agentterm \
+                                   && go build -trimpath -buildvcs=false -o '$out/guild' ./cmd/guild"
 if command -v actionlint >/dev/null 2>&1; then
   step "actionlint"              actionlint -shellcheck=
 else

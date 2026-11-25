@@ -9,6 +9,10 @@ Multi-agent dispatch, parallel coordination, shared context, and verification.
 3. **Branch** from `origin/main` with your registered prefix (`claude/`, `codex/`, `gemini/`, `manus/`, `tay/`), open a **draft PR** with `Collaborate-Claim:` lines, and never merge your own PR. The Claude skill `collaborate-pr-workflow` walks through each check.
 4. **Learn from history:** read and log errors and lessons in [`.learnings/`](.learnings/), using the `self-improvement` skill.
 
+## Dev Guild
+
+Text the cast from an iPhone. Characters answer in their own voice, and they can answer each other. The Next.js client (`web/dev-guild`) is the iMessage screen. `guild serve` on the Oracle VM writes every line into an `agentterm` log. `agentterm verify` still checks that log. Setup is `bash scripts/setup-guild.sh`. The phone reaches the VM through a free outbound tunnel, not a new open port. See [`docs/DEV-GUILD.md`](docs/DEV-GUILD.md).
+
 ## Current prototype
 
 **Transition note:** two independent pilots currently coexist. `collaborate` (`cmd/collaborate`) is the Ed25519-authenticated broker scaffold described below. `collab` (`cmd/collab`) is the newer local pilot described by [`docs/SECURITY.md`](docs/SECURITY.md); it has a separate database schema, shared bearer-token client model, and MCP stdio adapter. Their brokers, ledgers, and MCP tools are not interchangeable. Keep their state directories, ports, and host configurations separate. CI tests both; the project has not yet consolidated them into one canonical implementation.

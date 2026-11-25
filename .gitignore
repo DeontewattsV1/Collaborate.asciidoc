@@ -7,3 +7,5 @@ bin/
 __pycache__/
 *.py[cod]
 .agentterm/
+web/dev-guild/node_modules/
+web/dev-guild/.next/

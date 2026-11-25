@@ -86,6 +86,7 @@ function describe(e, b) {
     case "finding": return ["✱ [" + b.severity + "] PR #" + b.pr + " @" + s7(b.commit) + (b.path ? " " + b.path + (b.line ? ":" + b.line : "") : "") + " — " + b.text];
     case "finding_status": return ["✓ finding #" + b.finding + " → " + b.status + (b.commit ? " @" + s7(b.commit) : "")];
     case "note": return ["» " + b.text];
+    case "chat": return ["✉ " + (b.from ? b.from + ": " : "") + (b.text || b.title || b.kind)];
   }
   return [e.kind];
 }

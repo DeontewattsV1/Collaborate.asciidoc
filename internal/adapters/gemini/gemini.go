@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"collaborate/internal/adapter"
 	"collaborate/internal/modelplugin"
@@ -33,10 +34,11 @@ func (a *Adapter) Run(ctx context.Context, req adapter.Request, broker adapter.B
 		return adapter.Response{}, err
 	}
 	path := "/v1beta/models/" + url.PathEscape(a.client.Model()) + ":generateContent"
-	body := map[string]any{
-		"contents": []map[string]any{{
-			"parts": []map[string]string{{"text": req.Prompt}},
-		}},
+	body := map[string]any{"contents": geminiContents(req)}
+	if system := strings.TrimSpace(req.System); system != "" {
+		body["systemInstruction"] = map[string]any{
+			"parts": []map[string]string{{"text": system}},
+		}
 	}
 	var result struct {
 		Candidates []struct {
@@ -64,6 +66,36 @@ func (a *Adapter) Run(ctx context.Context, req adapter.Request, broker adapter.B
 		return adapter.Response{}, err
 	}
 	return modelplugin.Publish(broker, text)
+}
+
+func geminiContents(req adapter.Request) []map[string]any {
+	type turn struct{ role, text string }
+	seq := make([]turn, 0, len(req.Prior)+1)
+	for _, prior := range req.Prior {
+		role := "user"
+		if prior.Role == "assistant" {
+			role = "model"
+		}
+		if strings.TrimSpace(prior.Text) == "" {
+			continue
+		}
+		seq = append(seq, turn{role, prior.Text})
+	}
+	seq = append(seq, turn{"user", req.Prompt})
+	out := make([]map[string]any, 0, len(seq))
+	for _, item := range seq {
+		if n := len(out); n > 0 && out[n-1]["role"] == item.role {
+			parts := out[n-1]["parts"].([]map[string]string)
+			parts[0]["text"] += "\n" + item.text
+			out[n-1]["parts"] = parts
+			continue
+		}
+		out = append(out, map[string]any{
+			"role":  item.role,
+			"parts": []map[string]string{{"text": item.text}},
+		})
+	}
+	return out
 }
 
 var _ adapter.Adapter = (*Adapter)(nil)

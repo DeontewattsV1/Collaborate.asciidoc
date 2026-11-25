@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"collaborate/internal/adapter"
 	"collaborate/internal/modelplugin"
@@ -40,7 +41,7 @@ func (a *Adapter) Run(ctx context.Context, req adapter.Request, broker adapter.B
 	}
 	body := map[string]any{
 		"model":    a.client.Model(),
-		"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
+		"messages": openAIMessages(req),
 	}
 	if err := a.client.PostJSON(ctx, "/chat/completions", map[string]string{"Authorization": "Bearer " + a.client.APIKey()}, body, &result); err != nil {
 		return adapter.Response{}, err
@@ -56,6 +57,25 @@ func (a *Adapter) Run(ctx context.Context, req adapter.Request, broker adapter.B
 		return adapter.Response{}, err
 	}
 	return modelplugin.Publish(broker, text)
+}
+
+func openAIMessages(req adapter.Request) []map[string]string {
+	msgs := make([]map[string]string, 0, len(req.Prior)+2)
+	if system := strings.TrimSpace(req.System); system != "" {
+		msgs = append(msgs, map[string]string{"role": "system", "content": system})
+	}
+	for _, turn := range req.Prior {
+		role := "user"
+		if turn.Role == "assistant" {
+			role = "assistant"
+		}
+		if strings.TrimSpace(turn.Text) == "" {
+			continue
+		}
+		msgs = append(msgs, map[string]string{"role": role, "content": turn.Text})
+	}
+	msgs = append(msgs, map[string]string{"role": "user", "content": req.Prompt})
+	return msgs
 }
 
 var _ adapter.Adapter = (*Adapter)(nil)

@@ -136,6 +136,17 @@ Your tailnet name, server IP, key fingerprints, and GitHub tokens belong only in
 | Shared GitHub account | Claude, Codex, Gemini and Manus all act through `DeontewattsV1`. The branch prefix says which agent claims to act; it does not prove it. Give each agent its own GitHub App or machine account to fix this (see `.learnings/FEATURE_REQUESTS.md`). |
 | Provider API keys | Stay in GitHub Environments for the Actions workflows and do not reach this server. Give the server only the keys a task needs. |
 
+## Dev Guild on the same VM
+
+The iMessage client lives in `web/dev-guild` and deploys to Vercel. The bridge stays on this VM so the signed log never leaves it. After the user step:
+
+```bash
+export GUILD_OWNER_TOKEN='a long passphrase'
+bash scripts/setup-guild.sh
+```
+
+`collab-chat` (an alias for `guild chat`) and `guild tail` read the same conversation over SSH. The web app reaches loopback through a free outbound tunnel. See [`DEV-GUILD.md`](DEV-GUILD.md). Do not open any port except 22.
+
 ## Verification status
 
 | Item | Status |
