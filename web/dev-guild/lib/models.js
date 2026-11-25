@@ -1,14 +1,26 @@
-// Vercel AI Gateway for Dev Guild. The key is read from the environment on
-// the server. Callers pass generateText/streamText in tests so this file never
-// contacts the gateway unless a real key is present and a real SDK is used.
+// Free model path for Dev Guild. Callers pass generateText/streamText in tests
+// so this file never contacts a provider unless a real key is present and a
+// real SDK runner is used. Keys stay in the server environment.
 
-export const DEFAULT_GATEWAY_MODEL = "google/gemini-2.5-flash-lite";
-export const RERANK_MODEL = "cohere/rerank-v3.5";
+export const FLASH_LITE = "gemini-3.5-flash-lite";
+export const HYDROGEN = "gemini-4-hydrogen";
+export const GEMMA = "gemma-4-31b-it";
+export const GROQ_FREE = "llama-3.1-8b-instant";
+export const OPENROUTER_FREE = ["google/gemma-3-12b-it:free", "meta-llama/llama-3.2-3b-instruct:free"];
 export const MAX_TURNS = 3;
 export const MAX_SUMMARY = 240;
 
-// Reasoning effort is per character. Operator does not reason. The summary
-// shown in the chat is a separate short sentence, never the raw trace.
+// Free on the Gemini Developer API pricing page (AI Studio). Carbon, Argon,
+// and Neon are paid and are not in this list.
+export const FREE_GOOGLE = {
+  deep: HYDROGEN,
+  quick: FLASH_LITE,
+  distinct: GEMMA,
+};
+
+const DEEP = new Set(["claude", "codex", "gemini", "manus"]);
+const QUICK = new Set(["grok", "tay", "cursor", "copilot", "operator"]);
+
 export const REASONING_EFFORT = {
   claude: "high",
   codex: "medium",
@@ -23,46 +35,110 @@ export const REASONING_EFFORT = {
   ollama: "low",
 };
 
-export const MODEL_FALLBACKS = {
-  claude: ["anthropic/claude-haiku-4.5", "google/gemini-2.5-flash-lite"],
-  codex: ["openai/gpt-4.1-mini", "google/gemini-2.5-flash-lite"],
-  chatgpt: ["openai/gpt-4.1-mini", "google/gemini-2.5-flash-lite"],
-  gemini: ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite"],
-  grok: ["xai/grok-3-mini", "google/gemini-2.5-flash-lite"],
-  tay: ["xai/grok-3-mini", "google/gemini-2.5-flash-lite"],
-  default: ["google/gemini-2.5-flash-lite"],
-};
-
 export const HANDOFF_STATUSES = ["open", "handed-off", "done"];
 
 export function reasoningEffort(id) {
   return REASONING_EFFORT[id] || "low";
 }
 
-export function modelFallbacks(id) {
-  return MODEL_FALLBACKS[id] || MODEL_FALLBACKS.default;
+export function voiceFor(id) {
+  if (DEEP.has(id)) return "deep";
+  if (QUICK.has(id)) return "quick";
+  return "distinct";
 }
 
-// gatewayProviderOptions is what generateText/streamText send as
-// providerOptions.gateway. zeroDataRetention defaults on. Tags attribute
-// spend to the character. A Budget is set on the key in the Vercel dashboard,
-// not in this request.
-export function gatewayProviderOptions(character) {
-  const name = (character && (character.name || character.id)) || "guild";
-  const id = (character && character.id) || "";
-  return {
-    gateway: {
-      models: modelFallbacks(id),
-      caching: "auto",
-      tags: ["dev-guild", name],
-      user: "deonte",
-      zeroDataRetention: true,
-    },
+export function modelFor(id) {
+  return FREE_GOOGLE[voiceFor(id)];
+}
+
+export function googleChain(id) {
+  const primary = modelFor(id);
+  return [primary, ...Object.values(FREE_GOOGLE).filter((model) => model !== primary)];
+}
+
+export function isRateLimit(err) {
+  const status = err && (err.statusCode || err.status);
+  const message = String((err && err.message) || "");
+  return status === 429 || /429|RESOURCE_EXHAUSTED|rate limit/i.test(message);
+}
+
+// Order: the character's free Gemini model, the other free Gemini models on
+// 429, then Groq and OpenRouter only when those keys are set. OpenRouter
+// entries must end in :free.
+export function attemptsFor(env, characterId) {
+  const source = env || {};
+  const attempts = [];
+  if (source.GOOGLE_GENERATIVE_AI_API_KEY) {
+    for (const modelId of googleChain(characterId)) attempts.push({ provider: "google", modelId });
+  }
+  if (source.GROQ_API_KEY) attempts.push({ provider: "groq", modelId: GROQ_FREE });
+  if (source.OPENROUTER_API_KEY) {
+    for (const modelId of OPENROUTER_FREE) {
+      if (!modelId.endsWith(":free")) throw new Error("OpenRouter models must use the :free suffix");
+      attempts.push({ provider: "openrouter", modelId });
+    }
+  }
+  return attempts;
+}
+
+export async function runFreeAttempts({ attempts, run }) {
+  let last = { ok: false, reason: attempts && attempts.length ? "error" : "unset" };
+  let skipGoogle = false;
+  for (const attempt of attempts || []) {
+    if (skipGoogle && attempt.provider === "google") continue;
+    try {
+      const result = await run(attempt);
+      if (result && result.ok === false) {
+        last = result;
+        if (result.reason === "rate-limit" || result.reason === "empty") continue;
+        if (attempt.provider === "google") {
+          skipGoogle = true;
+          continue;
+        }
+        return result;
+      }
+      const { reasoningText, thought, ...safe } = result || {};
+      const summary = safe.summary !== undefined ? summaryOnly(safe.summary) : summaryOnly(reasoningText || thought);
+      return { ok: true, provider: attempt.provider, modelId: attempt.modelId, ...safe, summary };
+    } catch (err) {
+      if (isRateLimit(err)) {
+        last = { ok: false, reason: "rate-limit", status: 429 };
+        continue;
+      }
+      last = { ok: false, reason: "error", status: err.statusCode || err.status || 0 };
+      if (attempt.provider === "google") {
+        skipGoogle = true;
+        continue;
+      }
+      return last;
+    }
+  }
+  return last;
+}
+
+// thinkingConfig.includeThoughts asks Gemini for a thought trace. Callers
+// must pass only summaryOnly() of that trace to the phone and the log.
+export function googleThinking(id) {
+  const effort = reasoningEffort(id);
+  if (effort === "none") {
+    return { thinkingConfig: { includeThoughts: false, thinkingLevel: "minimal" } };
+  }
+  const thinkingLevel = effort === "high" ? "high" : effort === "medium" ? "medium" : "low";
+  return { thinkingConfig: { includeThoughts: true, thinkingLevel } };
+}
+
+export function providerRequest({ provider, modelId, system, prompt, character, messages, tools }) {
+  const request = {
+    provider,
+    modelId,
+    system,
+    providerOptions: { google: googleThinking(character && character.id) },
   };
-}
-
-export function gatewayModel() {
-  return (process.env.GUILD_GATEWAY_MODEL || DEFAULT_GATEWAY_MODEL).trim() || DEFAULT_GATEWAY_MODEL;
+  if (messages) request.messages = messages;
+  else request.prompt = prompt;
+  if (tools) request.tools = tools;
+  if (provider !== "google" || modelId === GEMMA) delete request.providerOptions;
+  return request;
 }
 
 export function parseMentions(text, known) {
@@ -90,6 +166,15 @@ export function planSpeakers({ members, group, text, known }) {
   return known.has("operator") ? ["operator"] : [];
 }
 
+async function thoughtOf(result) {
+  if (!result) return "";
+  const raw = result.reasoningText || result.reasoning || result.thought || "";
+  const value = typeof raw.then === "function" ? await raw : raw;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map((part) => part.text || "").join(" ");
+  return "";
+}
+
 async function textOf(result, stream) {
   if (!result) return "";
   if (stream) {
@@ -105,76 +190,46 @@ async function textOf(result, stream) {
   return String(result.text || "").trim();
 }
 
-// completeWithGateway calls generateText or streamText with a gateway model
-// string. A missing key or a thrown error (including the gateway 403) is a
-// soft failure so the caller can use the VM providers.
-export function gatewayRequest({ model, system, prompt, character, messages, tools }) {
-  const effort = reasoningEffort(character && character.id);
-  const request = {
-    model: model || DEFAULT_GATEWAY_MODEL,
-    system,
-    providerOptions: gatewayProviderOptions(character || {}),
-  };
-  if (effort !== "none") request.reasoning = effort;
-  if (messages) request.messages = messages;
-  else request.prompt = prompt;
-  if (tools) request.tools = tools;
-  return request;
-}
-
 export function summaryOnly(text) {
   const clean = String(text || "").replace(/\s+/g, " ").trim();
   if (!clean) return "";
   return clean.slice(0, MAX_SUMMARY);
 }
 
-export async function completeWithGateway({
-  apiKey,
-  model,
+export async function completeWithProvider({
+  env,
+  character,
   system,
   prompt,
-  character,
   messages,
   tools,
-  summary,
-  stream = false,
-  generateText,
-  streamText,
+  run,
 }) {
-  if (!apiKey) return { ok: false, reason: "unset" };
-  const run = stream ? streamText : generateText;
+  const attempts = attemptsFor(env, character && character.id);
+  if (!attempts.length) return { ok: false, reason: "unset" };
   if (typeof run !== "function") return { ok: false, reason: "sdk-missing" };
-  try {
-    const request = gatewayRequest({
-      model: model || DEFAULT_GATEWAY_MODEL,
-      system,
-      prompt,
-      character,
-      messages,
-      tools,
-    });
-    const result = await run(request);
-    const text = await textOf(result, stream);
-    if (!text) return { ok: false, reason: "empty" };
-    return {
-      ok: true,
-      text,
-      model: request.model,
-      // reasoningText is the model's trace. It is not returned to the client.
-      summary: summaryOnly(summary),
-    };
-  } catch (err) {
-    const status = err && (err.statusCode || err.status);
-    const message = err && err.message ? String(err.message) : "gateway error";
-    return { ok: false, reason: "error", status: status || 0, message };
-  }
+  return runFreeAttempts({
+    attempts,
+    run: async (attempt) => {
+      const request = providerRequest({ ...attempt, system, prompt, character, messages, tools });
+      try {
+        const result = await run(request);
+        const text = await textOf(result, Boolean(result && result.textStream));
+        const thought = await thoughtOf(result);
+        if (!text) return { ok: false, reason: "empty" };
+        return { ok: true, text, summary: summaryOnly(thought), request };
+      } catch (err) {
+        if (isRateLimit(err)) return { ok: false, reason: "rate-limit", status: 429 };
+        throw err;
+      }
+    },
+  });
 }
 
-// runGatewayRound speaks each planned character through the gateway. It stops
-// on the first gateway error and returns any lines already spoken.
+// runGatewayRound speaks each planned character through the free model chain.
+// It stops on the first hard error and returns any lines already spoken.
 export async function runGatewayRound({
-  apiKey,
-  model,
+  env,
   characters,
   thread,
   userText,
@@ -182,7 +237,7 @@ export async function runGatewayRound({
 }) {
   const known = new Set((characters || []).map((c) => c.id));
   const byId = new Map((characters || []).map((c) => [c.id, c]));
-  if (!apiKey) return { ok: false, reason: "unset", lines: [] };
+  if (env && attemptsFor(env).length === 0) return { ok: false, reason: "unset", lines: [] };
   const queue = planSpeakers({
     members: thread && thread.members,
     group: !!(thread && thread.group),
@@ -200,8 +255,8 @@ export async function runGatewayRound({
     if (!character) continue;
     turns += 1;
     const result = await complete({
-      apiKey,
-      model: model || DEFAULT_GATEWAY_MODEL,
+      env,
+      modelId: modelFor(character.id),
       system: character.system || "",
       prompt: userText,
       character,
@@ -209,7 +264,7 @@ export async function runGatewayRound({
     if (!result || !result.ok) {
       return { ok: false, reason: (result && result.reason) || "error", lines, error: result && result.message };
     }
-    lines.push({ from: id, text: result.text });
+    lines.push({ from: id, text: result.text, reasoning: result.summary || "" });
     if (thread && thread.group) {
       for (const mention of parseMentions(result.text, known)) {
         if (!seen.has(mention)) queue.push(mention);
@@ -220,14 +275,13 @@ export async function runGatewayRound({
   return { ok: true, lines };
 }
 
-// deliverOwnerMessage logs the human line, tries the gateway, and asks the VM
-// providers to answer when the gateway key is missing or the gateway fails
-// before any line was stored.
+// deliverOwnerMessage logs the human line, tries the free model chain, and
+// asks the VM providers to answer when no free key is set or every free
+// attempt fails before a line was stored.
 export async function deliverOwnerMessage({
   threadId,
   text,
-  apiKey,
-  model,
+  env,
   backend,
   complete,
 }) {
@@ -240,8 +294,7 @@ export async function deliverOwnerMessage({
     members: ["owner"],
   };
   const round = await runGatewayRound({
-    apiKey,
-    model: model || gatewayModel(),
+    env,
     characters: (cast && cast.characters) || [],
     thread,
     userText: text,
@@ -251,13 +304,13 @@ export async function deliverOwnerMessage({
     for (const line of round.lines) {
       await backend("POST", `/v1/threads/${threadId}/lines`, line);
     }
-    return { via: "gateway", lines: round.lines.length };
+    return { via: "gemini", lines: round.lines.length };
   }
   if (round.lines && round.lines.length) {
     for (const line of round.lines) {
       await backend("POST", `/v1/threads/${threadId}/lines`, line);
     }
-    return { via: "gateway-partial", reason: round.reason, lines: round.lines.length };
+    return { via: "partial", reason: round.reason, lines: round.lines.length };
   }
   await backend("POST", `/v1/threads/${threadId}/respond`, {});
   return { via: "provider", reason: round.reason };
@@ -383,36 +436,13 @@ export async function runTool({ name, args, from, known, backend, threadId }) {
   throw error;
 }
 
-export function rerankBody(query, documents) {
-  return {
-    model: RERANK_MODEL,
-    query,
-    documents: (documents || []).map((item) => item.text || ""),
-    top_n: Math.min(5, (documents || []).length || 5),
-  };
-}
-
-// searchHistory asks the gateway to rerank. A missing key or a 403 returns the
-// newest lines unchanged.
-export async function searchHistory({ apiKey, query, documents, fetchImpl }) {
+// Search stays on the newest matching lines. Paid rerank is not used.
+export function searchHistory({ query, documents }) {
   const docs = documents || [];
-  if (!apiKey || !query || docs.length === 0) return { ok: false, reason: apiKey ? "empty" : "unset", documents: docs.slice(-5) };
-  const run = fetchImpl;
-  if (typeof run !== "function") return { ok: false, reason: "unset", documents: docs.slice(-5) };
-  try {
-    const res = await run("https://ai-gateway.vercel.sh/v1/rerank", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(rerankBody(query, docs)),
-    });
-    if (!res.ok) return { ok: false, reason: "error", status: res.status, documents: docs.slice(-5) };
-    const data = await res.json();
-    const order = (data.results || data.data || []).map((row) => row.index);
-    const ranked = order.map((index) => docs[index]).filter(Boolean);
-    return { ok: true, documents: ranked.length ? ranked : docs.slice(-5) };
-  } catch {
-    return { ok: false, reason: "error", documents: docs.slice(-5) };
-  }
+  const needle = String(query || "").trim().toLowerCase();
+  const matched = needle ? docs.filter((item) => String(item.text || "").toLowerCase().includes(needle)) : docs;
+  const chosen = (matched.length ? matched : docs).slice(-5);
+  return { ok: true, via: "recent", documents: chosen };
 }
 
 export function demoStreamEvents({ from, userText }) {

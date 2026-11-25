@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { searchHistory } from "../../../../lib/gateway.js";
+import { searchHistory } from "../../../../lib/models.js";
 
 export const dynamic = "force-dynamic";
 
@@ -39,14 +39,9 @@ export async function GET(request) {
   });
   const data = await res.json();
   const documents = (data.messages || []).map((m) => ({ text: `${m.name}: ${m.text || m.task || ""}`, message: m }));
-  const ranked = await searchHistory({
-    apiKey: process.env.AI_GATEWAY_API_KEY || "",
-    query: q,
-    documents,
-    fetchImpl: fetch,
-  });
+  const ranked = searchHistory({ query: q, documents });
   return NextResponse.json({
-    via: ranked.ok ? "rerank" : "recent",
+    via: ranked.via,
     messages: (ranked.documents || []).map((item) => item.message).filter(Boolean),
   });
 }

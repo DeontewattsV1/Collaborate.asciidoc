@@ -1,8 +1,9 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { generateText, streamText } from "ai";
+import { generateText } from "ai";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { completeWithGateway, deliverOwnerMessage, gatewayModel } from "../../../../lib/gateway.js";
+import { completeWithProvider, deliverOwnerMessage } from "../../../../lib/models.js";
+import { languageModel } from "../../../../lib/providers.js";
 
 export const dynamic = "force-dynamic";
 
@@ -108,14 +109,21 @@ async function postWithGateway(request, token, parts) {
     const result = await deliverOwnerMessage({
       threadId,
       text: body.text || "",
-      apiKey: process.env.AI_GATEWAY_API_KEY || "",
-      model: gatewayModel(),
+      env: process.env,
       backend: backendFetch(token),
       complete: (job) =>
-        completeWithGateway({
-          ...job,
-          generateText,
-          streamText,
+        completeWithProvider({
+          env: process.env,
+          character: job.character,
+          system: job.system,
+          prompt: job.prompt,
+          run: (request) => generateText({
+            model: languageModel(request),
+            system: request.system,
+            prompt: request.prompt,
+            providerOptions: request.providerOptions,
+            maxRetries: 0,
+          }),
         }),
     });
     return NextResponse.json({ pending: true, via: result.via });

@@ -6,9 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test lib/gateway.test.js"
+    "test": "node --test lib/models.test.js"
   },
   "dependencies": {
+    "@ai-sdk/google": "^4.0.126",
+    "@ai-sdk/groq": "^4.0.86",
+    "@ai-sdk/openai": "^4.0.123",
     "ai": "^7.0.181",
     "next": "15.5.29",
     "react": "19.0.0",

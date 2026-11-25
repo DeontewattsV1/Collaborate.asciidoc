@@ -1,7 +1,9 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { streamText } from "ai";
+import { stepCountIs, streamText } from "ai";
 import { cookies } from "next/headers";
-import { demoStreamEvents, gatewayModel, gatewayRequest, modelMessages, normalizeAttachments, summaryOnly } from "../../../../lib/gateway.js";
+import { attemptsFor, demoStreamEvents, isRateLimit, modelMessages, normalizeAttachments, providerRequest, summaryOnly } from "../../../../lib/models.js";
+import { languageModel } from "../../../../lib/providers.js";
+import { guildTools } from "../../../../lib/tools.js";
 
 export const dynamic = "force-dynamic";
 
@@ -108,9 +110,9 @@ export async function POST(request) {
     async start(controller) {
       const send = (event, data) => controller.enqueue(encoder.encode(encode(event, data)));
       try {
-        const key = process.env.AI_GATEWAY_API_KEY || "";
+        const attempts = attemptsFor(process.env);
         const demo = process.env.GUILD_DEMO === "1";
-        if (!key) {
+        if (!attempts.length) {
           if (!demo) {
             await api("POST", `/v1/threads/${threadId}/respond`, {});
             send("fallback", { reason: "unset" });
@@ -132,43 +134,76 @@ export async function POST(request) {
           return;
         }
         const cast = await api("GET", "/v1/characters");
+        const known = new Set((cast.characters || []).map((c) => c.id));
         const mentioned = (text.match(/@([a-z0-9-]{2,32})/) || [])[1];
         const character = (cast.characters || []).find((c) => c.id === mentioned) || (cast.characters || []).find((c) => c.id === "claude");
         const from = character ? character.id : "claude";
         send("typing", { from });
-        let result;
-        try {
-          result = await streamText(gatewayRequest({
-            model: gatewayModel(),
-            system: character && character.system,
-            character,
-            messages: modelMessages({ text, attachments }),
-          }));
-        } catch {
+        const ordered = attemptsFor(process.env, from);
+        let skipGoogle = false;
+        let finished = false;
+        for (const attempt of ordered) {
+          if (skipGoogle && attempt.provider === "google") continue;
+          let say = "";
+          let thought = "";
+          try {
+            const request = providerRequest({
+              ...attempt,
+              system: character && character.system,
+              character,
+              messages: modelMessages({ text, attachments }),
+              tools: guildTools({ backend: api, threadId, from, known }),
+            });
+            const result = await streamText({
+              model: languageModel(attempt),
+              system: request.system,
+              messages: request.messages,
+              tools: request.tools,
+              providerOptions: request.providerOptions,
+              stopWhen: stepCountIs(4),
+              maxRetries: 0,
+            });
+            for await (const part of result.fullStream) {
+              if (part.type === "error") throw part.error;
+              if (part.type === "text-delta") {
+                say += part.text || "";
+                send("delta", { from, text: part.text || "" });
+              } else if (part.type === "reasoning-delta") {
+                thought += part.text || "";
+              } else if (part.type === "tool-result") {
+                const output = part.output || {};
+                send("tool", { from, name: part.toolName, summary: output.summary || part.toolName });
+                if (output.card) {
+                  send("card", { from, task: output.card.task, assignee: output.card.assignee, status: output.card.status });
+                }
+              }
+            }
+          } catch (err) {
+            if (!say.trim()) {
+              if (isRateLimit(err)) continue;
+              if (attempt.provider === "google") {
+                skipGoogle = true;
+                continue;
+              }
+              break;
+            }
+          }
+          if (!say.trim()) continue;
+          const summary = summaryOnly(thought);
+          if (summary) send("reasoning", { from, summary });
+          await persist(api, threadId, [
+            { event: "delta", data: { from, text: say } },
+            { event: "reasoning", data: { from, summary } },
+          ], []);
+          send("done", { via: attempt.provider });
+          finished = true;
+          break;
+        }
+        if (!finished) {
           await api("POST", `/v1/threads/${threadId}/respond`, {});
           send("fallback", { reason: "error" });
           send("done", { via: "provider" });
-          controller.close();
-          return;
         }
-        let say = "";
-        if (result && result.textStream) {
-          for await (const chunk of result.textStream) {
-            say += chunk;
-            send("delta", { from, text: chunk });
-          }
-        }
-        if (!say.trim()) {
-          await api("POST", `/v1/threads/${threadId}/respond`, {});
-          send("fallback", { reason: "empty" });
-          send("done", { via: "provider" });
-          controller.close();
-          return;
-        }
-        await persist(api, threadId, [
-          { event: "delta", data: { from, text: say } },
-        ], []);
-        send("done", { via: "gateway" });
       } catch {
         send("fallback", { reason: "error" });
         send("done", { via: "provider" });

@@ -26,31 +26,35 @@ A character is online only when the key it needs is in the server environment. T
 
 Optional model names match `scripts/setup_github_environments.sh`: `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL`, `XAI_MODEL`.
 
-## Vercel AI Gateway
+## Free Gemini
 
-The Next.js server tries [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) first, through the `ai` package. `generateText` and `streamText` receive a gateway model string such as `google/gemini-2.5-flash-lite` (`GUILD_GATEWAY_MODEL` overrides it). The key is `AI_GATEWAY_API_KEY`, read only on the server from the environment or `.env.local`. `.env.example` lists the name. `.env.local` is gitignored. Do not commit a key.
+The Next.js server calls the free Google Gemini API through `@ai-sdk/google`. `google()` reads `GOOGLE_GENERATIVE_AI_API_KEY` on the server. The browser never receives it. `.env.example` lists the name. `.env.local` is gitignored. Do not commit a key, and do not print it in logs.
 
-A character's system prompt is the personality from the registry (voice, quirk, catchphrase, how they talk to the others). The gateway model speaks as that character.
+The same value is a repository Actions secret named `GOOGLE_GENERATIVE_AI_API_KEY`. Set it on the Vercel project as well (Production and Preview, server-side only): Project → Settings → Environment Variables → `GOOGLE_GENERATIVE_AI_API_KEY`. The Vercel app cannot see the Actions secret by itself.
 
-If `AI_GATEWAY_API_KEY` is unset, or the gateway returns an error, the same message is answered by the VM providers in the table above (`MODEL_API_KEY` in the GitHub Environments, exported on the VM as `ANTHROPIC_API_KEY` and the others). A new gateway key often returns HTTP 403, `requires a valid credit card on file`, until a card is added in Vercel. That error takes the fallback path. Tests mock the gateway and do not call it.
+The default model is `gemini-3.5-flash-lite`. `gemini-2.5-flash-lite` routes to that model on 1 December 2026. Every model below is listed as free on the [Gemini API pricing page](https://ai.google.dev/gemini-api/docs/pricing).
 
-`guild chat` on the VM does not use the gateway. It uses the VM keys directly, and the lines still land in the same signed log.
+| Voice | Who | Model |
+|---|---|---|
+| Deep | Claude, Codex, Gemini, Manus | `gemini-4-hydrogen` |
+| Quick | Grok, Tay, Cursor, Copilot, Operator | `gemini-3.5-flash-lite` |
+| Distinct | ChatGPT, Ollama, and the tool mascots | `gemma-4-31b-it` |
 
-### What the gateway can do in the chat
+A character's system prompt is still the personality from the registry (voice, quirk, catchphrase, how they talk to the others).
 
-The phone streams replies into the bubble (`streamText`) and shows a typing indicator until the first token. These options are sent on every gateway call as `providerOptions.gateway`:
+On HTTP 429 or `RESOURCE_EXHAUSTED`, the server tries the next free Gemini model, then stops the Gemini chain on any other error. After Gemini:
 
-| Option | Value |
-|---|---|
-| `models` | Per-character fallbacks, after the primary model. Claude tries `anthropic/claude-haiku-4.5` then `google/gemini-2.5-flash-lite`. Grok tries `xai/grok-3-mini` then the same flash-lite model. |
-| `caching` | `auto` |
-| `user` | `deonte` |
-| `tags` | `dev-guild` and the character's name |
-| `zeroDataRetention` | `true` |
+1. `GROQ_API_KEY`, when set, calls `@ai-sdk/groq` with `llama-3.1-8b-instant`.
+2. `OPENROUTER_API_KEY`, when set, calls OpenRouter through `@ai-sdk/openai` and only model ids that end in `:free`.
+3. The VM providers in the table above (`MODEL_API_KEY` in the GitHub Environments, exported on the VM as `ANTHROPIC_API_KEY` and the others).
 
-Set a **Budget** on the gateway key in the Vercel dashboard (AI Gateway → the key → Budget). That limit is account-side. It is not a value in this repo.
+`guild chat` on the VM uses those VM keys directly. The lines still land in the same signed log. Tests pass mock runners and do not call a provider.
 
-`reasoning` is set per character: Claude `high`, Grok `low`, Operator `none`. A one-line summary can appear in a collapsible Thinking row. The raw reasoning trace is not stored and not sent to the phone.
+### What the chat can do
+
+The phone streams replies into the bubble (`streamText`) and shows a typing indicator until the first token.
+
+Gemini thinking uses `providerOptions.google.thinkingConfig`. Claude asks for `thinkingLevel: high` with `includeThoughts: true`. Grok uses `low`. Operator turns thoughts off. A short summary can appear in a collapsible Thinking row. The raw thought trace is not stored and not sent to the phone. Gemma requests omit `thinkingConfig`.
 
 Tools the model may call, each appended to the signed log as a `tool` line:
 
@@ -60,9 +64,11 @@ Tools the model may call, each appended to the signed log as a `tool` line:
 
 Images and PDFs attach from the composer. The model receives them as `input_image` or `input_file`. The log stores the file name only.
 
-Search in the thread asks the gateway to rerank with `cohere/rerank-v3.5`. If the key is missing or the gateway returns 403, the newest lines are shown instead.
+Search in the thread returns the newest lines whose text contains the query.
 
-`GUILD_DEMO=1` streams a scripted in-character reply, a Thinking summary, a tool line, and a task card, and does not call the gateway. That is what the screenshots show.
+`GUILD_DEMO=1` with no free key set streams a scripted in-character reply, a Thinking summary, a tool line, and a task card, and does not call a provider. That is what the screenshots show.
+
+A live smoke test is `.github/workflows/guild-gemini-smoke.yml`. It runs only on `workflow_dispatch`, reads the Actions secret, and fails when the reply text is empty. It prints `non-empty: yes` and a length. It does not print the key. GitHub lists that workflow after the file is on `main`. Until then, dispatch `independent-ci` on this branch with the `gemini_smoke` input. That job is skipped on pull requests, so a free-tier 429 cannot fail the required `go-verify` check.
 
 ## What gets logged
 
@@ -116,8 +122,11 @@ Import the repo. Set the project root to `web/dev-guild`. Production environment
 |---|---|
 | `GUILD_OWNER_TOKEN` | Same passphrase as the VM |
 | `GUILD_BACKEND_URL` | The `https://` tunnel or Funnel URL, no path |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | The free Gemini key. Same value as the Actions secret. Server-side only |
+| `GROQ_API_KEY` | Optional. Used only when Gemini is exhausted |
+| `OPENROUTER_API_KEY` | Optional. Used only with `:free` model ids |
 
-No provider key belongs in Vercel. Add to Home Screen on iPhone Safari for the standalone app. The first screen asks for the passphrase and stores only an httpOnly cookie.
+The VM's per-provider keys stay on the VM. Add to Home Screen on iPhone Safari for the standalone app. The first screen asks for the passphrase and stores only an httpOnly cookie.
 
 ## Deferred
 
