@@ -136,3 +136,22 @@ func TestMergeQueueCommitAdvancesDedicatedTrunk(t *testing.T) {
 		t.Fatalf("branch-head check=(%v,%v), want false for pre-merge agent commit", ok, err)
 	}
 }
+
+func TestGitRejectsOptionLikeArguments(t *testing.T) {
+	root := testRepo(t)
+	if _, err := InspectCommit(root, "--upload-pack=evil"); err == nil {
+		t.Fatal("option-like commit was accepted")
+	}
+	if err := EnsureBranch(root, "-main"); err == nil {
+		t.Fatal("option-like branch was accepted")
+	}
+	if err := CreateWorktree(root, "collab/agent-a", "-evil-path", "main"); err == nil {
+		t.Fatal("option-like worktree path was accepted")
+	}
+	if _, err := safeGitArg("--git-dir=/tmp"); err == nil {
+		t.Fatal("safeGitArg accepted a flag")
+	}
+	if _, err := safeGitArg(""); err == nil {
+		t.Fatal("safeGitArg accepted an empty value")
+	}
+}

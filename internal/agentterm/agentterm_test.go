@@ -425,6 +425,8 @@ func TestExecPolicy(t *testing.T) {
 		{"go", "vet", "-vettool=/bin/sh"}, {"gofmt", "-w", "x.go"}, {"gofmt", "-l", "-w", "x.go"}, {"git", "diff", "--output=/tmp/x"},
 		{"git", "log", "../../etc"}, {"git", "show", "/etc/passwd"}, {"python3", "-c", "print(1)"}, {"python3", "-m", "http.server"},
 		{"go", "test", "-C", "/"}, {"go", "build", "-pkgdir=/tmp"},
+		{"git", "status", "--git-dir=/tmp"}, {"git", "diff", "--work-tree=/"},
+		{"/usr/bin/git", "status"}, {"./go", "version"},
 	} {
 		if err := on.Check(argv); err == nil {
 			t.Errorf("%v allowed", argv)
@@ -505,5 +507,17 @@ func TestCheckedInRegistryAuthorizesTerminalAgents(t *testing.T) {
 	}
 	if s.branchAllowed("claude", "main") || s.branchAllowed("claude", "codex/x") || s.branchAllowed("claude", "claude/") {
 		t.Fatal("branch guard too loose")
+	}
+}
+
+func TestResolvedProgramUsesLiterals(t *testing.T) {
+	for _, name := range []string{"go", "gofmt", "git", "python3"} {
+		got, err := resolvedProgram(name)
+		if err != nil || got != name {
+			t.Fatalf("resolvedProgram(%q)=(%q,%v)", name, got, err)
+		}
+	}
+	if _, err := resolvedProgram("/usr/bin/git"); err == nil {
+		t.Fatal("path-like program name was accepted")
 	}
 }

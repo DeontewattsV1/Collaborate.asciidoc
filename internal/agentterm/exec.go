@@ -51,7 +51,7 @@ var pythonModules = map[string]bool{"unittest": true, "py_compile": true}
 
 // Flags that would write files outside the workspace, run another program,
 // or redirect configuration.
-var deniedFlagPrefixes = []string{"-o", "-exec", "-toolexec", "-C", "-modfile", "-overlay", "-vettool", "-ldflags", "-pkgdir", "--output", "--ext-diff", "--textconv", "-w", "--exec", "--upload-pack", "--config"}
+var deniedFlagPrefixes = []string{"-o", "-exec", "-toolexec", "-C", "-modfile", "-overlay", "-vettool", "-ldflags", "-pkgdir", "--output", "--ext-diff", "--textconv", "-w", "--exec", "--upload-pack", "--config", "--git-dir", "--work-tree"}
 
 // Check reports whether argv may run under the policy.
 func (p ExecPolicy) Check(argv []string) error {
@@ -92,10 +92,33 @@ func (p ExecPolicy) Check(argv []string) error {
 	return nil
 }
 
+// resolvedProgram maps an allowlisted name to a hardcoded executable.
+// Returning a string literal (not the raw argv[0]) prevents a crafted
+// program path from reaching exec.
+func resolvedProgram(name string) (string, error) {
+	switch name {
+	case "go":
+		return "go", nil
+	case "gofmt":
+		return "gofmt", nil
+	case "git":
+		return "git", nil
+	case "python3":
+		return "python3", nil
+	default:
+		return "", fmt.Errorf("exec: program %q is not on the allowlist (go, gofmt, git, python3)", name)
+	}
+}
+
 // Run executes argv under the policy. It never uses a shell.
 func (p ExecPolicy) Run(ctx context.Context, argv []string) ExecResult {
 	res := ExecResult{Verified: "server-executed"}
 	if err := p.Check(argv); err != nil {
+		res.Exit, res.Error = -1, err.Error()
+		return res
+	}
+	prog, err := resolvedProgram(argv[0])
+	if err != nil {
 		res.Exit, res.Error = -1, err.Error()
 		return res
 	}
@@ -106,13 +129,13 @@ func (p ExecPolicy) Run(ctx context.Context, argv []string) ExecResult {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	start := time.Now()
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd := exec.CommandContext(ctx, prog, argv[1:]...)
 	cmd.Dir = p.Dir
 	cmd.Env = scrubbedEnv()
 	var out, errOut limitedBuffer
 	out.limit, errOut.limit = maxOutput/2, maxOutput/2
 	cmd.Stdout, cmd.Stderr = &out, &errOut
-	err := cmd.Run()
+	err = cmd.Run()
 	res.DurationMS = time.Since(start).Milliseconds()
 	res.Stdout, res.Stderr = out.String(), errOut.String()
 	res.Truncated = out.truncated || errOut.truncated
