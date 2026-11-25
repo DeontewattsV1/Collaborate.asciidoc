@@ -68,7 +68,7 @@ Search in the thread returns the newest lines whose text contains the query.
 
 `GUILD_DEMO=1` with no free key set streams a scripted in-character reply, a Thinking summary, a tool line, and a task card, and does not call a provider. That is what the screenshots show.
 
-A live smoke test is `.github/workflows/guild-gemini-smoke.yml`. It runs only on `workflow_dispatch`, reads the Actions secret, and fails when the reply text is empty. It prints `non-empty: yes` and a length. It does not print the key.
+A live smoke test is `.github/workflows/guild-gemini-smoke.yml`. It runs only on `workflow_dispatch`, reads the Actions secret, and fails when the reply text is empty. It prints `non-empty: yes` and a length. It does not print the key. GitHub lists that workflow after the file is on `main`. Until then, dispatch `independent-ci` on this branch with the `gemini_smoke` input. That job is skipped on pull requests, so a free-tier 429 cannot fail the required `go-verify` check.
 
 ## What gets logged
 
