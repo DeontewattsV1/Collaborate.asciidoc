@@ -1,0 +1,39 @@
+name: Accessibility Barrier
+description: Report an accessibility barrier in the CLI, agentterm web UI, mobile SSH workflow, or docs
+title: "[Accessibility]: "
+labels: ["accessibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping make `Collaborate.asciidoc` more accessible. See [`ACCESSIBILITY.md`](https://github.com/DeontewattsV1/Collaborate.asciidoc/blob/main/ACCESSIBILITY.md) for our current supported environments and known limitations.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - agentterm web view (internal/agentterm/ui.html)
+        - CLI output (collaborate / collab / agentterm / scripts/check.sh)
+        - Mobile SSH / iPhone Secure ShellFish workflow
+        - Documentation (README, docs/, Markdown, AsciiDoc)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: assistive_tech
+    attributes:
+      label: OS, browser, terminal, or assistive technology
+      placeholder: "e.g., macOS VoiceOver + Safari, iOS VoiceOver + Secure ShellFish, NVDA + Firefox"
+    validations:
+      required: true
+  - type: textarea
+    id: barrier
+    attributes:
+      label: Barrier description and impact
+      description: What did you try to do, what blocked or slowed you down, and how severe is the impact?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix or workaround (optional)

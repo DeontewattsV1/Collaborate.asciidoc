@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security Vulnerability (Private Advisory)
+    url: https://github.com/DeontewattsV1/Collaborate.asciidoc/security/advisories/new
+    about: Report security vulnerabilities or exposed credentials privately—never in a public issue.
+  - name: Support & Documentation
+    url: https://github.com/DeontewattsV1/Collaborate.asciidoc/blob/main/SUPPORT.md
+    about: Read the troubleshooting and documentation index before opening a support question.
