@@ -200,3 +200,87 @@ test("demo stream has a summary, a tool, and a card", () => {
   assert.ok(names.includes("tool") && names.includes("card"));
   assert.equal(JSON.stringify(events).includes("reasoningText"), false);
 });
+import { BUILTIN_AGENTS, BUILTIN_CAST, BUILTIN_TOOLS, FREE_PRESETS, statusFor } from "./cast.js";
+import { planSpeakers } from "./models.js";
+import { checkGuildAuth, decryptCustomAgents, encryptCustomAgents, inviteCodeFor, isValidInviteCode } from "./auth.js";
+import { buildCatalog, listThreads } from "./store.js";
+
+test("built-in cast includes all 11 agents, 43 tool mascots, and 8 free presets", () => {
+  assert.equal(BUILTIN_AGENTS.length, 11);
+  assert.equal(BUILTIN_TOOLS.length, 43);
+  assert.equal(FREE_PRESETS.length, 8);
+  assert.equal(BUILTIN_CAST.length, 62);
+  const group = listThreads({ catalog: buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } }) }).find((t) => t.id === "guild");
+  assert.ok(group && group.group);
+  for (const c of BUILTIN_CAST) {
+    assert.ok(group.members.includes(c.id), `group missing ${c.id}`);
+  }
+});
+
+test("free presets activate only when their free key is set and show needs key otherwise", () => {
+  const envGeminiOnly = { GOOGLE_GENERATIVE_AI_API_KEY: "gkey" };
+  const groqPreset = FREE_PRESETS.find((p) => p.id === "groq-llama");
+  const orPreset = FREE_PRESETS.find((p) => p.id === "openrouter-gemma");
+  const gemPreset = FREE_PRESETS.find((p) => p.id === "gemini-flash");
+  assert.equal(statusFor(gemPreset, envGeminiOnly).online, true);
+  assert.equal(statusFor(groqPreset, envGeminiOnly).online, false);
+  assert.equal(statusFor(groqPreset, envGeminiOnly).statusLabel, "needs key");
+  assert.equal(attemptsFor(envGeminiOnly, groqPreset.id, groqPreset).length, 0);
+  assert.equal(statusFor(orPreset, envGeminiOnly).online, false);
+
+  const envWithGroq = { GOOGLE_GENERATIVE_AI_API_KEY: "gkey", GROQ_API_KEY: "groq" };
+  assert.equal(statusFor(groqPreset, envWithGroq).online, true);
+  assert.equal(attemptsFor(envWithGroq, groqPreset.id, groqPreset)[0].provider, "groq");
+});
+
+test("custom agent API key stays encrypted in cookie and never leaks in catalog", () => {
+  const token = "test-owner-token-123";
+  const secretAgent = {
+    id: "nova",
+    name: "Nova",
+    kind: "custom",
+    endpointType: "openai",
+    baseUrl: "https://api.example.com/v1",
+    modelId: "llama-3.1-8b-instant",
+    apiKey: "sk-super-secret-value",
+  };
+  const sealed = encryptCustomAgents([secretAgent], token);
+  assert.equal(sealed.includes("sk-super-secret-value"), false);
+  const restored = decryptCustomAgents(sealed, token);
+  assert.equal(restored[0].apiKey, "sk-super-secret-value");
+
+  const publicCatalog = buildCatalog({ env: {}, customAgents: restored, includeSecrets: false });
+  const nova = publicCatalog.find((c) => c.id === "nova");
+  assert.ok(nova);
+  assert.equal(nova.hasKey, true);
+  assert.equal(nova.apiKey, undefined);
+  assert.equal(JSON.stringify(publicCatalog).includes("sk-super-secret-value"), false);
+
+  const attempts = attemptsFor({}, "nova", restored[0]);
+  assert.equal(attempts.length, 1);
+  assert.equal(attempts[0].provider, "custom-openai");
+});
+
+test("group chat plans at least two active speakers when no mention is given", () => {
+  const known = new Set(["tay", "claude", "grok", "gemini", "operator"]);
+  const activeIds = new Set(["tay", "claude", "grok", "gemini", "operator"]);
+  const speakers = planSpeakers({
+    members: ["owner", "tay", "claude", "grok", "gemini", "operator"],
+    group: true,
+    text: "Hey team, say hello!",
+    known,
+    activeIds,
+  });
+  assert.ok(speakers.length >= 2);
+  assert.equal(new Set(speakers).size, speakers.length);
+});
+
+test("invite code validates strictly against owner token", () => {
+  const token = "guild-secret-passphrase";
+  const code = inviteCodeFor(token);
+  assert.ok(code.startsWith("inv_"));
+  assert.equal(isValidInviteCode(code, token), true);
+  assert.equal(isValidInviteCode("inv_wrong", token), false);
+  assert.equal(checkGuildAuth({ jar: null, token, inviteParam: code }).ok, true);
+  assert.equal(checkGuildAuth({ jar: null, token, inviteParam: "bad" }).ok, false);
+});
