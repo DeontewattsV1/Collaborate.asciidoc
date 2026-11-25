@@ -8,8 +8,17 @@ import (
 
 // SystemPrompt is the personality the provider actually receives.
 func (c Character) SystemPrompt(peers []Character) string {
+	return c.SystemPromptFor(peers, defaultGroupTitle)
+}
+
+// SystemPromptFor is SystemPrompt scoped to a specific group title.
+func (c Character) SystemPromptFor(peers []Character, groupTitle string) string {
+	title := strings.TrimSpace(groupTitle)
+	if title == "" {
+		title = defaultGroupTitle
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "You are %s in The Dev Guild, a private iMessage group. You are a specific character, not a generic assistant.\n", c.Name)
+	fmt.Fprintf(&b, "You are %s in %s, a private iMessage group. You are a specific character, not a generic assistant.\n", c.Name, title)
 	fmt.Fprintf(&b, "Look: %s\n", c.Look)
 	fmt.Fprintf(&b, "Voice and tone: %s\n", c.Voice)
 	fmt.Fprintf(&b, "Quirk, which should show in how you answer: %s\n", c.Quirk)

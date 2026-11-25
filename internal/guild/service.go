@@ -246,7 +246,7 @@ func (s *Service) Characters() []CharacterView {
 	out := make([]CharacterView, 0, len(s.Reg.All()))
 	for _, c := range s.Reg.All() {
 		p := c.Presence(s.getenv, s.Demo)
-		out = append(out, CharacterView{Character: c, Online: p.Online, Note: p.Note, System: c.SystemPrompt(s.Reg.Agents())})
+		out = append(out, CharacterView{Character: c, Online: p.Online, Note: p.Note, System: c.SystemPromptFor(s.Reg.Agents(), s.groupTitle())})
 	}
 	return out
 }
@@ -260,7 +260,7 @@ func (s *Service) view(id string) CharacterView {
 		return CharacterView{Character: Character{ID: id, Name: id, Kind: "system"}}
 	}
 	p := c.Presence(s.getenv, s.Demo)
-	return CharacterView{Character: c, Online: p.Online, Note: p.Note, System: c.SystemPrompt(s.Reg.Agents())}
+	return CharacterView{Character: c, Online: p.Online, Note: p.Note, System: c.SystemPromptFor(s.Reg.Agents(), s.groupTitle())}
 }
 
 // RecordCharacter appends a reply that was already produced (for example by
@@ -533,7 +533,7 @@ func (s *Service) Respond(ctx context.Context, threadID string) error {
 		}
 		turns++
 		prompt := lastOwner
-		system := c.SystemPrompt(peers)
+		system := c.SystemPromptFor(peers, s.groupTitle())
 		prior := s.prior(c.ID, history)
 		text, tokens, err := s.complete(ctx, Job{Character: c, Thread: threadID, System: system, Prompt: prompt, Prior: prior})
 		if err != nil {

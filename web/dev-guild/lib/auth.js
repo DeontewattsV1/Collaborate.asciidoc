@@ -55,19 +55,29 @@ export function isValidInviteCode(code, token) {
 }
 
 function signPayload(payload, purpose, token) {
-  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = createHmac("sha256", deriveKey(token)).update(`${purpose}:${data}`).digest("base64url");
-  return `${data}.${sig}`;
+  if (!token) return "";
+  const key = deriveKey(token);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(Buffer.from(String(purpose || ""), "utf8"));
+  const json = JSON.stringify(payload);
+  const enc = Buffer.concat([cipher.update(json, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("base64url")}.${tag.toString("base64url")}.${enc.toString("base64url")}`;
 }
 
 function verifyPayload(raw, purpose, token) {
-  if (!token || !raw || !String(raw).includes(".")) return null;
-  const [data, sig] = String(raw).split(".");
-  if (!data || !sig) return null;
-  const want = createHmac("sha256", deriveKey(token)).update(`${purpose}:${data}`).digest("base64url");
-  if (!safeEqual(sig, want)) return null;
+  if (!token || !raw) return null;
+  const parts = String(raw).split(".");
+  if (parts.length !== 3) return null;
   try {
-    return JSON.parse(Buffer.from(data, "base64url").toString("utf8"));
+    const [ivB, tagB, encB] = parts;
+    const key = deriveKey(token);
+    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB, "base64url"));
+    decipher.setAAD(Buffer.from(String(purpose || ""), "utf8"));
+    decipher.setAuthTag(Buffer.from(tagB, "base64url"));
+    const plain = Buffer.concat([decipher.update(Buffer.from(encB, "base64url")), decipher.final()]).toString("utf8");
+    return JSON.parse(plain);
   } catch {
     return null;
   }
