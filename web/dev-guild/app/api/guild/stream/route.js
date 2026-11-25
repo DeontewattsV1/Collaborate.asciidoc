@@ -14,14 +14,20 @@ function allowed(got, token) {
 }
 
 function backend(token) {
-  const base = (process.env.GUILD_BACKEND_URL || "http://127.0.0.1:8790").replace(/\/$/, "");
+  const root = new URL(process.env.GUILD_BACKEND_URL || "http://127.0.0.1:8790");
   return async (method, path, body) => {
+    const target = new URL(String(path || "").replace(/^\//, ""), new URL(root.origin + "/"));
+    if (target.origin !== root.origin || target.username || target.password) {
+      const error = new Error("bad path");
+      error.status = 400;
+      throw error;
+    }
     const init = { method, headers: { Authorization: `Bearer ${token}` }, cache: "no-store" };
     if (body !== undefined) {
       init.headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
-    const res = await fetch(`${base}${path}`, init);
+    const res = await fetch(target, init);
     const text = await res.text();
     const data = text ? JSON.parse(text) : {};
     if (!res.ok) {
@@ -85,6 +91,9 @@ export async function POST(request) {
     return Response.json({ error: err.message }, { status: err.status || 400 });
   }
   const threadId = String(body.thread || "guild");
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(threadId)) {
+    return Response.json({ error: "bad thread" }, { status: 400 });
+  }
   const text = String(body.text || "").trim();
   const api = backend(token);
   const files = attachments.map((item) => item.name);

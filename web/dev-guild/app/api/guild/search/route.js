@@ -22,9 +22,19 @@ export async function GET(request) {
   const url = new URL(request.url);
   const thread = url.searchParams.get("thread") || "guild";
   const q = url.searchParams.get("q") || "";
-  const base = (process.env.GUILD_BACKEND_URL || "http://127.0.0.1:8790").replace(/\/$/, "");
-  const res = await fetch(`${base}/v1/threads/${thread}/messages?after=0`, {
-    headers: { Authorization: `Bearer ${token}` },
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(thread)) {
+    return NextResponse.json({ error: "bad thread" }, { status: 400 });
+  }
+  const base = process.env.GUILD_BACKEND_URL || "http://127.0.0.1:8790";
+  const root = new URL(base);
+  const target = new URL("/v1/search", root);
+  if (target.origin !== root.origin) {
+    return NextResponse.json({ error: "bad backend" }, { status: 500 });
+  }
+  const res = await fetch(target, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ thread }),
     cache: "no-store",
   });
   const data = await res.json();

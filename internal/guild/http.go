@@ -25,6 +25,7 @@ func Handler(svc *Service, token, allowOrigin string) http.Handler {
 	mux.HandleFunc("POST /v1/threads/{id}/lines", h.authed(h.postLine))
 	mux.HandleFunc("POST /v1/threads/{id}/respond", h.authed(h.respond))
 	mux.HandleFunc("GET /v1/files", h.authed(h.readFile))
+	mux.HandleFunc("POST /v1/search", h.authed(h.search))
 	return mux
 }
 
@@ -144,6 +145,28 @@ func (a *api) postLine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"message": msg})
+}
+
+func (a *api) search(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Thread string `json:"thread"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if in.Thread == "" {
+		in.Thread = "guild"
+	}
+	msgs, err := a.svc.Messages(in.Thread, 0)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if msgs == nil {
+		msgs = []Message{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
 }
 
 func (a *api) readFile(w http.ResponseWriter, r *http.Request) {

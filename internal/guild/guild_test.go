@@ -339,6 +339,24 @@ func TestHoldKeepsTheProviderQuietUntilAsked(t *testing.T) {
 	}
 }
 
+func TestSearchRejectsAThreadIDThatCouldChangeTheHost(t *testing.T) {
+	svc := testService(t, true)
+	token := "owner-token-not-a-provider-key"
+	srv := httptest.NewServer(Handler(svc.Service, token, ""))
+	defer srv.Close()
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/search", strings.NewReader(`{"thread":"http://evil.example"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", res.StatusCode)
+	}
+}
+
 func TestReadRepoFileIsLoggedAndRefusesSecrets(t *testing.T) {
 	svc := testService(t, true)
 	dir := t.TempDir()
