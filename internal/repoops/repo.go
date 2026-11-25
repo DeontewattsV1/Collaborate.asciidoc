@@ -38,6 +38,15 @@ type GateResult struct {
 	Error      string `json:"error,omitempty"`
 }
 
+// safeGitArg rejects empty values and option-like arguments so user-controlled
+// strings cannot be interpreted as git flags (for example --upload-pack).
+func safeGitArg(s string) (string, error) {
+	if s == "" || strings.HasPrefix(s, "-") {
+		return "", fmt.Errorf("invalid git argument %q", s)
+	}
+	return s, nil
+}
+
 func git(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	c := exec.CommandContext(ctx, "git", args...)
 	c.Dir = dir
@@ -46,6 +55,21 @@ func git(ctx context.Context, dir string, args ...string) ([]byte, error) {
 		return out, fmt.Errorf("git %s: %s: %w", strings.Join(args, " "), strings.TrimSpace(string(out)), err)
 	}
 	return out, nil
+}
+
+// gitVerified appends user-controlled values only after safeGitArg rejects option-like strings.
+// flags may include a trailing "--" when that is end-of-options for the subcommand; do not
+// put revisions after "--" for show, diff-tree, or rev-parse, which treat "--" as a pathspec split.
+func gitVerified(ctx context.Context, dir string, flags []string, values ...string) ([]byte, error) {
+	args := append([]string{}, flags...)
+	for _, v := range values {
+		s, err := safeGitArg(v)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, s)
+	}
+	return git(ctx, dir, args...)
 }
 
 // InspectCommit derives receipt metadata from Git objects in the trusted checkout.
@@ -57,21 +81,21 @@ func InspectCommit(root, commit string) (Receipt, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	resolved, err := git(ctx, root, "rev-parse", "--verify", sha+"^{commit}")
+	resolved, err := gitVerified(ctx, root, []string{"rev-parse", "--verify", "--end-of-options"}, sha+"^{commit}")
 	if err != nil {
 		return Receipt{}, err
 	}
 	sha = strings.TrimSpace(string(resolved))
-	tree, err := git(ctx, root, "show", "-s", "--format=%T", sha)
+	tree, err := gitVerified(ctx, root, []string{"show", "-s", "--format=%T"}, sha)
 	if err != nil {
 		return Receipt{}, err
 	}
-	patch, err := git(ctx, root, "show", "--format=", "--no-ext-diff", "--no-renames", sha)
+	patch, err := gitVerified(ctx, root, []string{"show", "--format=", "--no-ext-diff", "--no-renames"}, sha)
 	if err != nil {
 		return Receipt{}, err
 	}
 	sum := sha256.Sum256(patch)
-	filesRaw, err := git(ctx, root, "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z", "--no-renames", sha)
+	filesRaw, err := gitVerified(ctx, root, []string{"diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z", "--no-renames"}, sha)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -97,13 +121,13 @@ func RunGates(root, commit string, gates []Gate) ([]GateResult, error) {
 	defer os.RemoveAll(tmp)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	if _, err = git(ctx, root, "worktree", "add", "--detach", "--quiet", tmp, commit); err != nil {
+	if _, err = gitVerified(ctx, root, []string{"worktree", "add", "--detach", "--quiet", "--"}, tmp, commit); err != nil {
 		return nil, err
 	}
 	defer func() {
 		clean, c := context.WithTimeout(context.Background(), 15*time.Second)
 		defer c()
-		_, _ = git(clean, root, "worktree", "remove", "--force", "--quiet", tmp)
+		_, _ = gitVerified(clean, root, []string{"worktree", "remove", "--force", "--"}, tmp)
 	}()
 	results := make([]GateResult, 0, len(gates))
 	for _, g := range gates {
@@ -152,14 +176,14 @@ func EnsureBranch(root, branch string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if _, err := git(ctx, root, "show-ref", "--verify", "--quiet", "refs/heads/"+branch); err == nil {
+	if _, err := gitVerified(ctx, root, []string{"show-ref", "--verify", "--quiet", "--"}, "refs/heads/"+branch); err == nil {
 		return nil
 	}
 	head, err := git(ctx, root, "rev-parse", "HEAD")
 	if err != nil {
 		return err
 	}
-	_, err = git(ctx, root, "branch", branch, strings.TrimSpace(string(head)))
+	_, err = gitVerified(ctx, root, []string{"branch", "--"}, branch, strings.TrimSpace(string(head)))
 	return err
 }
 func BranchHead(root, branch string) (string, error) {
@@ -168,7 +192,7 @@ func BranchHead(root, branch string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	b, err := git(ctx, root, "rev-parse", "--verify", "refs/heads/"+branch+"^{commit}")
+	b, err := gitVerified(ctx, root, []string{"rev-parse", "--verify", "--end-of-options"}, "refs/heads/"+branch+"^{commit}")
 	return strings.TrimSpace(string(b)), err
 }
 func CommitIsBranchHead(root, branch, commit string) (bool, error) {
@@ -190,7 +214,11 @@ func CreateWorktree(root, branch, worktree, base string) error {
 	if err := os.MkdirAll(filepath.Dir(worktree), 0700); err != nil {
 		return err
 	}
-	_, err := git(ctx, root, "worktree", "add", "-b", branch, worktree, base)
+	branch, err := safeGitArg(branch)
+	if err != nil {
+		return err
+	}
+	_, err = gitVerified(ctx, root, []string{"worktree", "add", "-b", branch, "--"}, worktree, base)
 	return err
 }
 
@@ -220,12 +248,12 @@ func mergeQueueCommit(root, trunk, commit string, gates []Gate) (string, []GateR
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	old, err := git(ctx, root, "rev-parse", "refs/heads/"+trunk)
+	old, err := gitVerified(ctx, root, []string{"rev-parse"}, "refs/heads/"+trunk)
 	if err != nil {
 		return "", nil, err
 	}
 	oldSHA := strings.TrimSpace(string(old))
-	if _, err = git(ctx, root, "merge-base", "--is-ancestor", commit, oldSHA); err == nil {
+	if _, err = gitVerified(ctx, root, []string{"merge-base", "--is-ancestor", "--"}, commit, oldSHA); err == nil {
 		var results []GateResult
 		if len(gates) > 0 {
 			results, err = RunGates(root, oldSHA, gates)
@@ -240,15 +268,15 @@ func mergeQueueCommit(root, trunk, commit string, gates []Gate) (string, []GateR
 		return "", nil, err
 	}
 	defer os.RemoveAll(tmp)
-	if _, err = git(ctx, root, "worktree", "add", "--detach", "--quiet", tmp, oldSHA); err != nil {
+	if _, err = gitVerified(ctx, root, []string{"worktree", "add", "--detach", "--quiet", "--"}, tmp, oldSHA); err != nil {
 		return "", nil, err
 	}
 	defer func() {
 		c, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_, _ = git(c, root, "worktree", "remove", "--force", "--quiet", tmp)
+		_, _ = gitVerified(c, root, []string{"worktree", "remove", "--force", "--"}, tmp)
 	}()
-	if _, err = git(ctx, tmp, "-c", "user.name=Collaborate Integrator", "-c", "user.email=collaborate@localhost", "merge", "--no-edit", "--no-ff", commit); err != nil {
+	if _, err = gitVerified(ctx, tmp, []string{"-c", "user.name=Collaborate Integrator", "-c", "user.email=collaborate@localhost", "merge", "--no-edit", "--no-ff", "--"}, commit); err != nil {
 		return "", nil, err
 	}
 	head, err := git(ctx, tmp, "rev-parse", "HEAD")
@@ -263,7 +291,7 @@ func mergeQueueCommit(root, trunk, commit string, gates []Gate) (string, []GateR
 			return "", results, err
 		}
 	}
-	if _, err = git(ctx, root, "update-ref", "refs/heads/"+trunk, newSHA, oldSHA); err != nil {
+	if _, err = gitVerified(ctx, root, []string{"update-ref", "--"}, "refs/heads/"+trunk, newSHA, oldSHA); err != nil {
 		return "", results, fmt.Errorf("%w: %v", ErrBranchMoved, err)
 	}
 	return newSHA, results, nil
