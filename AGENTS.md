@@ -13,6 +13,7 @@ This repository is an experimental multi-agent collaboration system, **not a pro
 | `internal/ghcoord`, `.github/workflows/collaborate-coordination.yml` | The `coordinate` check: PR path leases and `Collaborate-Claim:` lines |
 | `scripts/agent_model_bridge.py`, `scripts/opensandbox_run.py` | Multi-model PR review and live sandbox runs (`docs/LIVE-SETUP.md`) |
 | `scripts/locker_agents.py`, `agents/locker/`, `.github/workflows/locker-agents.yml` | 1,000 Git Locker assistant agents that brief a primary model (`docs/LOCKER-AGENTS.md`); regenerate the index with `python3 scripts/locker_agents.py index --write` |
+| `.devcontainer/devcontainer.json`, `scripts/sandbox/bootstrap-ubuntu.sh`, `docs/IPHONE-SANDBOX.md` | Set up a free ($0) GitHub Codespaces or Oracle Always Free Ubuntu sandbox driven from an iPhone (Secure ShellFish) or any SSH client |
 | `scripts/check.sh` | **The one verification command.** CI's `go-verify` runs exactly this. |
 | `scripts/repo_hygiene.py` | Guards against recurring repository mistakes (see `.learnings/`) |
 | `.claude/skills/` | Claude Code skills: `collaborate-pr-workflow`, `self-improvement`, `automate-recurring-errors` |
