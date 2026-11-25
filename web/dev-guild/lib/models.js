@@ -65,8 +65,38 @@ export function isRateLimit(err) {
 // Order: the character's free Gemini model, the other free Gemini models on
 // 429, then Groq and OpenRouter only when those keys are set. OpenRouter
 // entries must end in :free.
-export function attemptsFor(env, characterId) {
+export function attemptsFor(env, characterId, character) {
   const source = env || {};
+  if (character && character.kind === "custom") {
+    if (character.endpointType === "openai") {
+      if (character.baseUrl && character.modelId && character.apiKey) {
+        return [{
+          provider: "custom-openai",
+          name: character.id,
+          baseUrl: character.baseUrl,
+          modelId: character.modelId,
+          apiKey: character.apiKey,
+        }];
+      }
+      return [];
+    }
+    const attempts = [];
+    if (source.GOOGLE_GENERATIVE_AI_API_KEY) {
+      const preferred = character.modelId || FLASH_LITE;
+      const chain = [preferred, ...googleChain(characterId).filter((m) => m !== preferred)];
+      for (const modelId of chain) attempts.push({ provider: "google", modelId });
+    }
+    if (source.GROQ_API_KEY) attempts.push({ provider: "groq", modelId: GROQ_FREE });
+    return attempts;
+  }
+  if (character && character.kind === "preset") {
+    const req = character.requiredEnv;
+    if (req && !String(source[req] || "").trim()) return [];
+    if (character.provider === "openrouter" && !String(character.modelId || "").endsWith(":free")) {
+      throw new Error("OpenRouter models must use the :free suffix");
+    }
+    return [{ provider: character.provider, modelId: character.modelId }];
+  }
   const attempts = [];
   if (source.GOOGLE_GENERATIVE_AI_API_KEY) {
     for (const modelId of googleChain(characterId)) attempts.push({ provider: "google", modelId });
@@ -156,13 +186,28 @@ export function parseMentions(text, known) {
   return found;
 }
 
-export function planSpeakers({ members, group, text, known }) {
+export function planSpeakers({ members, group, text, known, activeIds, priorityIds }) {
   const mentioned = parseMentions(text, known);
   if (mentioned.length) return mentioned;
   if (!group) {
     const other = (members || []).find((id) => id !== "owner" && known.has(id));
     return other ? [other] : [];
   }
+  const memberSet = members && members.length ? new Set(members) : null;
+  const allow = (id) => {
+    if (!id || id === "owner" || !known.has(id)) return false;
+    if (memberSet && !memberSet.has(id)) return false;
+    if (activeIds && !activeIds.has(id)) return false;
+    return true;
+  };
+  const chosen = [];
+  const defaults = ["tay", "claude", "grok", "gemini", "codex", "chatgpt"];
+  for (const id of [...(priorityIds || []), ...defaults, ...(members || [])]) {
+    if (!allow(id) || chosen.includes(id)) continue;
+    chosen.push(id);
+    if (chosen.length >= MAX_TURNS) break;
+  }
+  if (chosen.length) return chosen;
   return known.has("operator") ? ["operator"] : [];
 }
 
@@ -205,7 +250,7 @@ export async function completeWithProvider({
   tools,
   run,
 }) {
-  const attempts = attemptsFor(env, character && character.id);
+  const attempts = attemptsFor(env, character && character.id, character);
   if (!attempts.length) return { ok: false, reason: "unset" };
   if (typeof run !== "function") return { ok: false, reason: "sdk-missing" };
   return runFreeAttempts({

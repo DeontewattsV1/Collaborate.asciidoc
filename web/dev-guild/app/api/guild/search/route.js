@@ -1,23 +1,21 @@
-import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { checkGuildAuth, getOwnerToken } from "../../../../lib/auth.js";
 import { searchHistory } from "../../../../lib/models.js";
+import { getMessages, hasVmBackend, vmFetch } from "../../../../lib/store.js";
 
 export const dynamic = "force-dynamic";
 
-function allowed(got, token) {
-  if (!token || !got) return false;
-  const want = createHmac("sha256", token).update("dev-guild-owner").digest("hex");
-  const a = Buffer.from(got);
-  const b = Buffer.from(want);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function GET(request) {
-  const token = process.env.GUILD_OWNER_TOKEN || "";
+  const token = getOwnerToken();
   const jar = await cookies();
-  if (!allowed(jar.get("guild_session")?.value || "", token)) {
-    return NextResponse.json({ error: "Sign in again." }, { status: 401 });
+  const auth = checkGuildAuth({
+    jar,
+    token,
+    authHeader: request.headers.get("authorization"),
+  });
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
   const url = new URL(request.url);
   const thread = url.searchParams.get("thread") || "guild";
@@ -25,20 +23,18 @@ export async function GET(request) {
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(thread)) {
     return NextResponse.json({ error: "bad thread" }, { status: 400 });
   }
-  const base = process.env.GUILD_BACKEND_URL || "http://127.0.0.1:8790";
-  const root = new URL(base);
-  const target = new URL("/v1/search", root);
-  if (target.origin !== root.origin) {
-    return NextResponse.json({ error: "bad backend" }, { status: 500 });
+  let messages = [];
+  if (hasVmBackend()) {
+    try {
+      const data = await vmFetch(token, "POST", "/v1/search", { thread });
+      messages = data.messages || [];
+    } catch {
+      messages = getMessages(thread, 0);
+    }
+  } else {
+    messages = getMessages(thread, 0);
   }
-  const res = await fetch(target, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ thread }),
-    cache: "no-store",
-  });
-  const data = await res.json();
-  const documents = (data.messages || []).map((m) => ({ text: `${m.name}: ${m.text || m.task || ""}`, message: m }));
+  const documents = messages.map((m) => ({ text: `${m.name}: ${m.text || m.task || ""}`, message: m }));
   const ranked = searchHistory({ query: q, documents });
   return NextResponse.json({
     via: ranked.via,
