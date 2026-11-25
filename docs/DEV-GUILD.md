@@ -26,6 +26,16 @@ A character is online only when the key it needs is in the server environment. T
 
 Optional model names match `scripts/setup_github_environments.sh`: `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL`, `XAI_MODEL`.
 
+## Vercel AI Gateway
+
+The Next.js server tries [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) first, through the `ai` package. `generateText` and `streamText` receive a gateway model string such as `google/gemini-2.5-flash-lite` (`GUILD_GATEWAY_MODEL` overrides it). The key is `AI_GATEWAY_API_KEY`, read only on the server from the environment or `.env.local`. `.env.example` lists the name. `.env.local` is gitignored. Do not commit a key.
+
+A character's system prompt is the personality from the registry (voice, quirk, catchphrase, how they talk to the others). The gateway model speaks as that character.
+
+If `AI_GATEWAY_API_KEY` is unset, or the gateway returns an error, the same message is answered by the VM providers in the table above (`MODEL_API_KEY` in the GitHub Environments, exported on the VM as `ANTHROPIC_API_KEY` and the others). A new gateway key often returns HTTP 403, `requires a valid credit card on file`, until a card is added in Vercel. That error takes the fallback path. Tests mock the gateway and do not call it.
+
+`guild chat` on the VM does not use the gateway. It uses the VM keys directly, and the lines still land in the same signed log.
+
 ## What gets logged
 
 `guild serve` writes `.agentterm/guild.jsonl`. Each line is an `agentterm` entry of kind `chat`, hash-chained and signed by `guild.key`. Model replies go through `adapter.Broker.Say`, the same broker method `collaborate adapter run` uses, and that `Say` writes the log. The chat broker refuses path claims and file writes.

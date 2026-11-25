@@ -215,6 +215,7 @@ type CharacterView struct {
 	Character
 	Online bool   `json:"online"`
 	Note   string `json:"note"`
+	System string `json:"system,omitempty"`
 }
 
 // Characters returns the cast with presence filled in.
@@ -222,7 +223,7 @@ func (s *Service) Characters() []CharacterView {
 	out := make([]CharacterView, 0, len(s.Reg.All()))
 	for _, c := range s.Reg.All() {
 		p := c.Presence(s.getenv, s.Demo)
-		out = append(out, CharacterView{Character: c, Online: p.Online, Note: p.Note})
+		out = append(out, CharacterView{Character: c, Online: p.Online, Note: p.Note, System: c.SystemPrompt(s.Reg.Agents())})
 	}
 	return out
 }
@@ -236,7 +237,29 @@ func (s *Service) view(id string) CharacterView {
 		return CharacterView{Character: Character{ID: id, Name: id, Kind: "system"}}
 	}
 	p := c.Presence(s.getenv, s.Demo)
-	return CharacterView{Character: c, Online: p.Online, Note: p.Note}
+	return CharacterView{Character: c, Online: p.Online, Note: p.Note, System: c.SystemPrompt(s.Reg.Agents())}
+}
+
+// RecordCharacter appends a reply that was already produced (for example by
+// Vercel AI Gateway) into the signed log. It does not call a provider.
+func (s *Service) RecordCharacter(thread, from, text string) (Message, error) {
+	text = strings.TrimSpace(text)
+	if text == "" || len(text) > 4000 {
+		return Message{}, errors.New("message is empty or too long")
+	}
+	if _, ok := s.thread(thread); !ok {
+		return Message{}, fmt.Errorf("unknown thread %q", thread)
+	}
+	character, ok := s.Reg.Get(from)
+	if !ok || character.Kind == "" {
+		return Message{}, fmt.Errorf("unknown character %q", from)
+	}
+	entry, err := s.recordReply(Job{Character: character, Thread: thread}, text, estimateTokens(text))
+	if err != nil {
+		return Message{}, err
+	}
+	body, _ := decode(entry)
+	return s.bubble(entry, body), nil
 }
 
 // Messages returns the thread, optionally after a log sequence.

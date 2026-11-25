@@ -296,6 +296,49 @@ type testSvc struct {
 	dir string
 }
 
+func TestHoldKeepsTheProviderQuietUntilAsked(t *testing.T) {
+	svc := testService(t, true)
+	token := "owner-token-not-a-provider-key"
+	srv := httptest.NewServer(Handler(svc.Service, token, ""))
+	defer srv.Close()
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/threads/guild/messages", strings.NewReader(`{"text":"@claude hello","reply":"hold"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	msgs, err := svc.Messages("guild", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 || msgs[0].From != "owner" {
+		t.Fatalf("hold still produced replies: %+v", msgs)
+	}
+	line, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/threads/guild/lines", strings.NewReader(`{"from":"claude","text":"Let me sit with that. Gateway said so."}`))
+	line.Header.Set("Authorization", "Bearer "+token)
+	line.Header.Set("Content-Type", "application/json")
+	res, err = http.DefaultClient.Do(line)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("line status %d", res.StatusCode)
+	}
+	if _, err := svc.Verify(); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ = svc.Messages("guild", 0)
+	if len(msgs) != 2 || !strings.Contains(msgs[1].Text, "Let me sit with that.") {
+		t.Fatalf("recorded line = %+v", msgs)
+	}
+}
+
 func testService(t *testing.T, demo bool) *testSvc {
 	t.Helper()
 	dir := t.TempDir()

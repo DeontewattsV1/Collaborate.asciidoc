@@ -16,9 +16,9 @@ body:
         - cmd/collaborate (Ed25519 broker / MCP / adapters)
         - cmd/collab (shared-token pilot)
         - cmd/agentterm (shared verifiable terminal / web UI)
+        - cmd/guild and web/dev-guild (Dev Guild chat)
         - cmd/agent-registry-check / coordinate check
-        - Git Locker assistant agents (scripts/locker_agents.py)
-        - Sandboxes (Codespaces / Oracle / GCP / OpenSandbox / Render)
+        - Sandboxes (Codespaces / Oracle / Secure ShellFish)
         - GitHub Actions / scripts/check.sh
         - Documentation
     validations:

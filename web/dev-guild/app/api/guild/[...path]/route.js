@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import { generateText, streamText } from "ai";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { completeWithGateway, deliverOwnerMessage, gatewayModel } from "../../../../lib/gateway.js";
 
 export const dynamic = "force-dynamic";
 
@@ -12,14 +14,48 @@ function allowed(got, token) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+function backendFetch(token) {
+  const base = (process.env.GUILD_BACKEND_URL || "http://127.0.0.1:8790").replace(/\/$/, "");
+  return async (method, path, body) => {
+    const init = {
+      method,
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    };
+    if (body !== undefined) {
+      init.headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(body);
+    }
+    const res = await fetch(`${base}${path}`, init);
+    const text = await res.text();
+    let data = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text };
+      }
+    }
+    if (!res.ok) {
+      const error = new Error(data.error || "The guild bridge refused the request.");
+      error.status = res.status;
+      throw error;
+    }
+    return data;
+  };
+}
+
 async function proxy(request, { params }) {
   const token = process.env.GUILD_OWNER_TOKEN || "";
   const jar = await cookies();
   if (!allowed(jar.get("guild_session")?.value || "", token)) {
     return NextResponse.json({ error: "Sign in again." }, { status: 401 });
   }
-  const base = (process.env.GUILD_BACKEND_URL || "http://127.0.0.1:8790").replace(/\/$/, "");
   const parts = (await params).path || [];
+  if (request.method === "POST" && parts.at(-1) === "messages") {
+    return postWithGateway(request, token, parts);
+  }
+  const base = (process.env.GUILD_BACKEND_URL || "http://127.0.0.1:8790").replace(/\/$/, "");
   const url = new URL(request.url);
   const target = `${base}/${parts.join("/")}${url.search}`;
   const headers = { Authorization: `Bearer ${token}` };
@@ -39,6 +75,35 @@ async function proxy(request, { params }) {
     status: upstream.status,
     headers: { "Content-Type": upstream.headers.get("content-type") || "application/json" },
   });
+}
+
+async function postWithGateway(request, token, parts) {
+  let body = {};
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "bad json" }, { status: 400 });
+  }
+  const threadId = parts.at(-2);
+  try {
+    const result = await deliverOwnerMessage({
+      threadId,
+      text: body.text || "",
+      apiKey: process.env.AI_GATEWAY_API_KEY || "",
+      model: gatewayModel(),
+      backend: backendFetch(token),
+      complete: (job) =>
+        completeWithGateway({
+          ...job,
+          generateText,
+          streamText,
+        }),
+    });
+    return NextResponse.json({ pending: true, via: result.via });
+  } catch (err) {
+    const status = err.status || 502;
+    return NextResponse.json({ error: err.message || "The guild bridge isn't reachable." }, { status });
+  }
 }
 
 export const GET = proxy;
