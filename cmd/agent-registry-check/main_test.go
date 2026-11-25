@@ -62,6 +62,7 @@ func TestCheckedInRegistryBootstrap(t *testing.T) {
 		{maintainer, "codex/session-join-coordination-20261121", "codex"},
 		{maintainer, "manus/collaborate-scaffold", "manus"},
 		{maintainer, "gemini/agent-collaboration-workflow", "gemini-cli"},
+		{maintainer, "tay/fix-code-scanning-1-2", "tay"},
 		{dependabot, "dependabot/go_modules/go_modules-200d9d8864", "dependabot"},
 	}
 	for _, tc := range allow {
