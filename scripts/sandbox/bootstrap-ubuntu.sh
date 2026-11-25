@@ -8,9 +8,12 @@
 #   Step 2, reconnect as the new "sandbox" user, then:
 #     curl -fsSL https://raw.githubusercontent.com/DeontewattsV1/Collaborate.asciidoc/main/scripts/sandbox/bootstrap-ubuntu.sh | bash -s -- user
 #
-# Options for "user": --no-check (skip scripts/check.sh --quick), --no-serve
-# (do not start the agent terminal). Set SANDBOX_USER or COLLAB_REPO to
-# override the defaults below.
+# Options for "admin": --key "ssh-ed25519 AAAA... name" (repeatable) installs that
+# public key for the sandbox user, e.g. the key Secure ShellFish shows you.
+# Options for "user": --port N (agent terminal port on 127.0.0.1, default 8787;
+# use the port your SSH client forwards, e.g. 8080), --no-check (skip
+# scripts/check.sh --quick), --no-serve (do not start the agent terminal).
+# Set SANDBOX_USER or COLLAB_REPO to override the defaults below.
 set -euo pipefail
 
 SANDBOX_USER="${SANDBOX_USER:-sandbox}"
@@ -23,7 +26,21 @@ MARK_END="# <<< collaborate sandbox <<<"
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 die() { echo "bootstrap: $*" >&2; exit 1; }
 
+valid_pubkey() {
+  # One public key line: type, base64 body, optional comment. Never a private key.
+  [[ "$1" =~ ^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com|ssh-rsa)\ [A-Za-z0-9+/]+=*(\ [^[:cntrl:]]*)?$ ]] || return 1
+  if command -v ssh-keygen >/dev/null; then ssh-keygen -l -f - <<<"$1" >/dev/null 2>&1 || return 1; fi
+}
+
 admin() {
+  local extra_keys=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --key) [ $# -ge 2 ] || die "--key needs a public key"; valid_pubkey "$2" || die "--key is not a valid SSH public key line"
+             extra_keys+=("$2"); shift 2 ;;
+      *) die "unknown option $1" ;;
+    esac
+  done
   [ "$EUID" -eq 0 ] && SUDO="" || SUDO="sudo"
   command -v apt-get >/dev/null || die "this script expects Ubuntu/Debian (apt-get)"
   say "Installing packages"
@@ -53,20 +70,30 @@ admin() {
       $SUDO touch "$keys"
     fi
   fi
+  for k in ${extra_keys[@]+"${extra_keys[@]}"}; do
+    if $SUDO grep -qxF -- "$k" "$keys"; then
+      echo "key already installed: ${k##* }"
+    else
+      printf '%s\n' "$k" | $SUDO tee -a "$keys" >/dev/null
+      echo "installed key: ${k##* }"
+    fi
+  done
   $SUDO chown "$SANDBOX_USER:$SANDBOX_USER" "$keys"
   $SUDO chmod 600 "$keys"
   say "Done. Reconnect as '$SANDBOX_USER' and run the 'user' step."
 }
 
 user() {
-  local run_check=1 serve=1
-  for a in "$@"; do
-    case "$a" in
-      --no-check) run_check=0 ;;
-      --no-serve) serve=0 ;;
-      *) die "unknown option $a" ;;
+  local run_check=1 serve=1 port="${AGENTTERM_PORT:-8787}"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-check) run_check=0; shift ;;
+      --no-serve) serve=0; shift ;;
+      --port) [ $# -ge 2 ] || die "--port needs a number"; port="$2"; shift 2 ;;
+      *) die "unknown option $1" ;;
     esac
   done
+  [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1024 ] && [ "$port" -le 65535 ] || die "--port must be 1024-65535"
   [ "$EUID" -ne 0 ] || die "run the 'user' step as the unprivileged sandbox user, not root"
   if id -nG | tr ' ' '\n' | grep -qx sudo; then
     echo "WARNING: this account can use sudo; the sandbox is meant to run without admin rights"
@@ -88,7 +115,7 @@ user() {
   block=$(cat <<EOF
 $MARK_BEGIN
 export COLLAB_ROOT="$COLLAB_ROOT"
-export AGENTTERM_SERVER="http://127.0.0.1:8787"
+export AGENTTERM_SERVER="http://127.0.0.1:$port"
 export GOTOOLCHAIN=auto
 export CGO_ENABLED=1
 export PATH="\$HOME/.local/bin:\$PATH"
@@ -128,14 +155,14 @@ EOF
       echo "already running in tmux session 'collaborate-terminal'"
     else
       tmux new-session -d -s collaborate-terminal -c "$COLLAB_ROOT" \
-        "$HOME/.local/bin/agentterm serve --addr 127.0.0.1:8787 --registry .github/agent-registry.json --data $HOME/.agentterm"
+        "$HOME/.local/bin/agentterm serve --addr 127.0.0.1:$port --registry .github/agent-registry.json --data $HOME/.agentterm"
     fi
     for _ in $(seq 1 20); do
-      curl -fsS http://127.0.0.1:8787/api/info >/dev/null 2>&1 && break
+      curl -fsS http://127.0.0.1:$port/api/info >/dev/null 2>&1 && break
       sleep 0.5
     done
-    curl -fsS http://127.0.0.1:8787/api/info >/dev/null || die "agent terminal did not start; run: tmux attach -t collaborate-terminal"
-    echo "agent terminal is up at http://127.0.0.1:8787 (server key: $(curl -fsS http://127.0.0.1:8787/api/info | jq -r .server_key | cut -c1-16)…)"
+    curl -fsS http://127.0.0.1:$port/api/info >/dev/null || die "agent terminal did not start; run: tmux attach -t collaborate-terminal"
+    echo "agent terminal is up at http://127.0.0.1:$port (server key: $(curl -fsS http://127.0.0.1:$port/api/info | jq -r .server_key | cut -c1-16)…)"
   fi
 
   say "Ready"
@@ -145,12 +172,12 @@ Next:
   gh auth login --hostname github.com --git-protocol https   # fine-grained token, this repo only
   collab-agent claude     # one tmux session per agent: claude, codex, gemini, manus, operator
   collab-terminal         # watch the shared agent terminal
-To view the terminal's web page on your phone, use an SSH tunnel to port 8787; never expose it publicly.
+To view the terminal's web page on your phone, forward port $port over SSH (Secure ShellFish: Port Forwarding $port -> $port); never expose it publicly.
 EOF
 }
 
 case "${1:-}" in
   admin) shift; admin "$@" ;;
   user) shift; user "$@" ;;
-  *) echo "usage: $0 admin | user [--no-check] [--no-serve]" >&2; exit 2 ;;
+  *) echo "usage: $0 admin [--key PUBKEY]... | user [--port N] [--no-check] [--no-serve]" >&2; exit 2 ;;
 esac

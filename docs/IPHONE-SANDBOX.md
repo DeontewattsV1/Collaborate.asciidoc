@@ -26,14 +26,17 @@ Cloud servers bill while they exist, even when idle.
 Connect as the provider's admin account and paste:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DeontewattsV1/Collaborate.asciidoc/main/scripts/sandbox/bootstrap-ubuntu.sh | bash -s -- admin
+curl -fsSL https://raw.githubusercontent.com/DeontewattsV1/Collaborate.asciidoc/main/scripts/sandbox/bootstrap-ubuntu.sh \
+  | bash -s -- admin --key "ssh-ed25519 AAAA...your-key... ShellFish@iPhone"
 ```
+
+Paste in the public key that Secure ShellFish shows under **Keys**. Use the key line that begins `ssh-ed25519`, and keep it in quotes. That key is the public half only; the private half stays in the iPhone's Secure Enclave. `--key` can be repeated, and re-running it never adds a second copy. Anything that is not a valid public key line is refused before the server is touched. You can leave out `--key`; the step then reuses the admin account's `authorized_keys`.
 
 This step:
 
 - installs the toolchain (git, gh, tmux, Go, Python, SQLite headers, and so on);
 - creates the **`sandbox`** user without sudo;
-- copies your iPhone key into `/home/sandbox/.ssh/authorized_keys` with mode `600`.
+- installs your iPhone key in `/home/sandbox/.ssh/authorized_keys` with mode `600`.
 
 It is safe to re-run.
 
@@ -42,7 +45,7 @@ It is safe to re-run.
 In Secure ShellFish, change the server's username to `sandbox`, reconnect, and paste:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DeontewattsV1/Collaborate.asciidoc/main/scripts/sandbox/bootstrap-ubuntu.sh | bash -s -- user
+curl -fsSL https://raw.githubusercontent.com/DeontewattsV1/Collaborate.asciidoc/main/scripts/sandbox/bootstrap-ubuntu.sh | bash -s -- user --port 8080
 source ~/.bashrc
 ```
 
@@ -54,7 +57,11 @@ This step:
 4. Runs `scripts/check.sh --quick`.
 5. Starts the agent terminal in tmux, on loopback, with command execution off.
 
-Options: `--no-check` skips the check, and `--no-serve` doesn't start the agent terminal.
+Options:
+
+- `--port N` sets the agent terminal's port on 127.0.0.1. The default is 8787; use the port your SSH client forwards, such as 8080 below.
+- `--no-check` skips the check.
+- `--no-serve` doesn't start the agent terminal.
 
 Then sign in to GitHub with a **fine-grained token limited to this repository**:
 
@@ -92,7 +99,18 @@ gh auth login --hostname github.com --git-protocol https
 - Install each agent's own CLI (Claude Code, Codex CLI, Gemini CLI, OpenCode) as the `sandbox` user and run each one in its own tmux session.
 - Turn on **Shell Integration** in Secure ShellFish to get a notification when an agent finishes or needs your input.
 - Each agent works on its registered branch prefix: `claude/`, `codex/`, `gemini/` or `manus/` (see `.github/agent-registry.json`). Copilot, Cursor, Windsurf and ChatGPT are present but unconfigured. OpenCode is not in the registry, so add it there before it opens PRs.
-- To view the agent terminal's web page on the phone, forward port 8787 over SSH. Never expose it publicly.
+- To view the agent terminal's web page on the phone, forward its port over SSH. Never expose it publicly.
+
+## 5a. Secure ShellFish connection settings
+
+| Setting | Value | Where it runs |
+|---|---|---|
+| **Port Forwarding** | local `8080` → server `8080`, matching `user --port 8080` | Through the SSH connection to the server's loopback, so the port stays closed in the firewall. Open `http://localhost:8080` on the phone. |
+| **Host** | The server's public IP, or its Tailscale MagicDNS name (`<machine>.<tailnet>.ts.net`) if the server and phone are on the same tailnet | With Tailscale you can close port 22 to the internet and allow SSH only on the `tailscale0` interface. |
+| **HTTP Proxy** (`localhost:2080`, the `proxy2080.pac` file) | Optional | A SOCKS5 proxy on the iPhone, carried over SSH. It makes the phone's web traffic leave from the server. The server needs no setup for it; turn it off when you don't need it. |
+| **Dynamic port forwarding** | Optional | Starts only after you tap a link in the terminal. Use the regular forward above for the agent terminal. |
+
+Your tailnet name, server IP and key fingerprints are your own configuration. Keep them in Secure ShellFish, not in this repository. A test fails if a `.ts.net` name or a key body is committed to the script or this guide.
 
 ## 6. What this does and does not isolate
 
