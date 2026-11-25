@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,7 @@ var mentionRE = regexp.MustCompile(`@([a-z0-9-]{2,32})`)
 type Service struct {
 	Term     *agentterm.Terminal
 	Reg      *Registry
+	Repo     string
 	Demo     bool
 	Getenv   func(string) string
 	Complete Completer
@@ -193,20 +195,26 @@ func (s *Service) OpenDM(id string) (Thread, error) {
 
 // Message is one bubble.
 type Message struct {
-	Seq       int64          `json:"seq"`
-	ID        string         `json:"id"`
-	Thread    string         `json:"thread"`
-	From      string         `json:"from"`
-	Name      string         `json:"name"`
-	Kind      string         `json:"kind"`
-	Avatar    string         `json:"avatar,omitempty"`
-	Color     string         `json:"color,omitempty"`
-	Text      string         `json:"text"`
-	Mentions  []string       `json:"mentions,omitempty"`
-	Time      string         `json:"time"`
-	Status    string         `json:"status,omitempty"`
-	Mine      bool           `json:"mine"`
-	Character *CharacterView `json:"character,omitempty"`
+	Seq        int64          `json:"seq"`
+	ID         string         `json:"id"`
+	Thread     string         `json:"thread"`
+	From       string         `json:"from"`
+	Name       string         `json:"name"`
+	Kind       string         `json:"kind"`
+	Avatar     string         `json:"avatar,omitempty"`
+	Color      string         `json:"color,omitempty"`
+	Text       string         `json:"text"`
+	Mentions   []string       `json:"mentions,omitempty"`
+	Time       string         `json:"time"`
+	Status     string         `json:"status,omitempty"`
+	Mine       bool           `json:"mine"`
+	Reasoning  string         `json:"reasoning,omitempty"`
+	Tool       string         `json:"tool,omitempty"`
+	Task       string         `json:"task,omitempty"`
+	Assignee   string         `json:"assignee,omitempty"`
+	CardStatus string         `json:"card_status,omitempty"`
+	Files      []string       `json:"files,omitempty"`
+	Character  *CharacterView `json:"character,omitempty"`
 }
 
 // CharacterView is the public card. It has personality and the enable hint,
@@ -254,12 +262,86 @@ func (s *Service) RecordCharacter(thread, from, text string) (Message, error) {
 	if !ok || character.Kind == "" {
 		return Message{}, fmt.Errorf("unknown character %q", from)
 	}
-	entry, err := s.recordReply(Job{Character: character, Thread: thread}, text, estimateTokens(text))
+	return s.RecordLine(Line{Thread: thread, From: from, Text: text, Kind: "message"})
+}
+
+// Line is one already-produced guild entry: a reply, a tool call, or a task card.
+type Line struct {
+	Thread     string
+	From       string
+	Text       string
+	Kind       string
+	Reasoning  string
+	Tool       string
+	Task       string
+	Assignee   string
+	CardStatus string
+	Files      []string
+}
+
+// RecordLine appends a gateway or demo result. It does not call a provider.
+func (s *Service) RecordLine(line Line) (Message, error) {
+	if _, ok := s.thread(line.Thread); !ok {
+		return Message{}, fmt.Errorf("unknown thread %q", line.Thread)
+	}
+	if _, ok := s.Reg.Get(line.From); !ok && line.From != ownerID && line.From != "system" {
+		return Message{}, fmt.Errorf("unknown character %q", line.From)
+	}
+	kind := line.Kind
+	if kind == "" {
+		kind = "message"
+	}
+	text := strings.TrimSpace(line.Text)
+	if kind == "card" && text == "" {
+		text = strings.TrimSpace(line.Task)
+	}
+	body := agentterm.ChatBody{
+		Thread: line.Thread, ID: newID("m"), Kind: kind, From: line.From, Text: text,
+		Mentions: s.parseMentions(text + " " + line.Task), Tokens: estimateTokens(text),
+		Status: "delivered", Reasoning: strings.TrimSpace(line.Reasoning), Tool: line.Tool,
+		Task: strings.TrimSpace(line.Task), Assignee: line.Assignee, CardStatus: line.CardStatus,
+		Files: line.Files,
+	}
+	entry, err := s.append(body)
 	if err != nil {
 		return Message{}, err
 	}
-	body, _ := decode(entry)
-	return s.bubble(entry, body), nil
+	stored, _ := decode(entry)
+	return s.bubble(entry, stored), nil
+}
+
+// ReadRepoFile reads one repository file for a character tool call and logs
+// the call. Paths stay inside Repo. Secrets and private keys are refused.
+func (s *Service) ReadRepoFile(thread, from, rel string) (string, error) {
+	clean, err := safeRepoPath(rel)
+	if err != nil {
+		return "", err
+	}
+	root := s.Repo
+	if root == "" {
+		root = "."
+	}
+	full := filepath.Join(root, filepath.FromSlash(clean))
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	fullAbs, err := filepath.Abs(full)
+	if err != nil || (fullAbs != rootAbs && !strings.HasPrefix(fullAbs, rootAbs+string(filepath.Separator))) {
+		return "", errors.New("path is not allowed")
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return "", errors.New("file is not readable")
+	}
+	if len(data) > 12<<10 {
+		data = data[:12<<10]
+	}
+	summary := clean + " (" + strconv.Itoa(len(data)) + " bytes)"
+	if _, err := s.RecordLine(Line{Thread: thread, From: from, Kind: "tool", Tool: "read_repo_file", Text: summary}); err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 // Messages returns the thread, optionally after a log sequence.
@@ -271,7 +353,7 @@ func (s *Service) Messages(thread string, after int64) ([]Message, error) {
 	var lastOwner int = -1
 	for _, e := range s.entries() {
 		b, ok := decode(e)
-		if !ok || b.Thread != thread || (b.Kind != "message" && b.Kind != "system") {
+		if !ok || b.Thread != thread || (b.Kind != "message" && b.Kind != "system" && b.Kind != "tool" && b.Kind != "card") {
 			continue
 		}
 		if e.Seq <= after {
@@ -304,8 +386,8 @@ func (s *Service) Messages(thread string, after int64) ([]Message, error) {
 func (s *Service) bubble(e agentterm.Entry, b agentterm.ChatBody) Message {
 	v := s.view(b.From)
 	kind := v.Kind
-	if b.Kind == "system" {
-		kind = "system"
+	if b.Kind == "system" || b.Kind == "tool" || b.Kind == "card" {
+		kind = b.Kind
 	}
 	status := ""
 	if b.From == ownerID {
@@ -314,16 +396,25 @@ func (s *Service) bubble(e agentterm.Entry, b agentterm.ChatBody) Message {
 	return Message{
 		Seq: e.Seq, ID: b.ID, Thread: b.Thread, From: b.From, Name: v.Name, Kind: kind,
 		Avatar: v.Avatar, Color: v.Color, Text: b.Text, Mentions: b.Mentions, Time: e.Time,
-		Status: status, Mine: b.From == ownerID,
+		Status: status, Mine: b.From == ownerID, Reasoning: b.Reasoning, Tool: b.Tool,
+		Task: b.Task, Assignee: b.Assignee, CardStatus: b.CardStatus, Files: b.Files,
 	}
 }
 
 // Post records Deonte's message and, when sync is set, the replies.
 // Async callers should invoke Respond afterwards.
 func (s *Service) Post(ctx context.Context, thread, text string, sync bool) (Message, error) {
+	return s.PostWithFiles(ctx, thread, text, nil, sync)
+}
+
+// PostWithFiles records Deonte's message. File names are logged; bytes are not.
+func (s *Service) PostWithFiles(ctx context.Context, thread, text string, files []string, sync bool) (Message, error) {
 	text = strings.TrimSpace(text)
-	if text == "" {
+	if text == "" && len(files) == 0 {
 		return Message{}, errors.New("message is empty")
+	}
+	if text == "" {
+		text = "Sent an attachment."
 	}
 	if len(text) > 4000 {
 		return Message{}, errors.New("message is too long")
@@ -333,7 +424,7 @@ func (s *Service) Post(ctx context.Context, thread, text string, sync bool) (Mes
 	}
 	mentions := s.parseMentions(text)
 	entry, err := s.append(agentterm.ChatBody{
-		Thread: thread, ID: newID("m"), Kind: "message", From: ownerID, Text: text, Mentions: mentions, Status: "delivered",
+		Thread: thread, ID: newID("m"), Kind: "message", From: ownerID, Text: text, Mentions: mentions, Status: "delivered", Files: files,
 	})
 	if err != nil {
 		return Message{}, err
@@ -566,4 +657,32 @@ func (s *Service) Verify() (agentterm.VerifyReport, error) {
 // ServerPublicKey exposes the key for offline verify.
 func ServerPublicKey(key ed25519.PublicKey) string {
 	return hex.EncodeToString(key)
+}
+
+func safeRepoPath(rel string) (string, error) {
+	rel = strings.TrimSpace(rel)
+	if rel == "" || strings.Contains(rel, "..") || strings.ContainsAny(rel, "\\") || strings.HasPrefix(rel, "/") {
+		return "", errors.New("path is not allowed")
+	}
+	clean := pathClean(rel)
+	base := strings.ToLower(filepath.Base(clean))
+	if base == ".env" || strings.HasPrefix(base, ".env.") || base == "guild.key" || base == "id_rsa" || strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key") {
+		return "", errors.New("path is not allowed")
+	}
+	if strings.HasPrefix(clean, ".agentterm") || strings.HasPrefix(clean, ".collab") || strings.HasPrefix(clean, ".git") {
+		return "", errors.New("path is not allowed")
+	}
+	return clean, nil
+}
+
+func pathClean(rel string) string {
+	parts := strings.Split(rel, "/")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p == "" || p == "." {
+			continue
+		}
+		out = append(out, p)
+	}
+	return strings.Join(out, "/")
 }

@@ -454,12 +454,24 @@ func validateChat(body string) error {
 				return errors.New("chat: bad member id")
 			}
 		}
-	case "message", "system":
+	case "message", "system", "tool", "card":
 		if b.From == "" || !chatIDPattern.MatchString(b.From) {
 			return errors.New("chat: from is required")
 		}
-		if b.Text == "" || len(b.Text) > maxText {
+		if b.Kind != "card" && (b.Text == "" || len(b.Text) > maxText) {
 			return errors.New("chat: text is required (max 4000 bytes)")
+		}
+		if b.Kind == "card" && (b.Task == "" || len(b.Task) > 400 || !chatIDPattern.MatchString(b.Assignee)) {
+			return errors.New("chat: card needs a task and assignee")
+		}
+		if b.Kind == "card" && b.CardStatus != "open" && b.CardStatus != "handed-off" && b.CardStatus != "done" {
+			return errors.New("chat: card status must be open, handed-off, or done")
+		}
+		if b.Kind == "tool" && (b.Tool == "" || len(b.Tool) > 64) {
+			return errors.New("chat: tool name is required")
+		}
+		if len(b.Reasoning) > 400 {
+			return errors.New("chat: reasoning summary is too long")
 		}
 		if len(b.Mentions) > 8 {
 			return errors.New("chat: too many mentions")
@@ -467,6 +479,14 @@ func validateChat(body string) error {
 		for _, m := range b.Mentions {
 			if !chatIDPattern.MatchString(m) {
 				return errors.New("chat: bad mention")
+			}
+		}
+		if len(b.Files) > 4 {
+			return errors.New("chat: too many attachments")
+		}
+		for _, f := range b.Files {
+			if f == "" || len(f) > 80 || strings.ContainsAny(f, "/\\") {
+				return errors.New("chat: attachment names are file names only")
 			}
 		}
 		if b.Tokens < 0 {

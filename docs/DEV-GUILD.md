@@ -36,6 +36,34 @@ If `AI_GATEWAY_API_KEY` is unset, or the gateway returns an error, the same mess
 
 `guild chat` on the VM does not use the gateway. It uses the VM keys directly, and the lines still land in the same signed log.
 
+### What the gateway can do in the chat
+
+The phone streams replies into the bubble (`streamText`) and shows a typing indicator until the first token. These options are sent on every gateway call as `providerOptions.gateway`:
+
+| Option | Value |
+|---|---|
+| `models` | Per-character fallbacks, after the primary model. Claude tries `anthropic/claude-haiku-4.5` then `google/gemini-2.5-flash-lite`. Grok tries `xai/grok-3-mini` then the same flash-lite model. |
+| `caching` | `auto` |
+| `user` | `deonte` |
+| `tags` | `dev-guild` and the character's name |
+| `zeroDataRetention` | `true` |
+
+Set a **Budget** on the gateway key in the Vercel dashboard (AI Gateway → the key → Budget). That limit is account-side. It is not a value in this repo.
+
+`reasoning` is set per character: Claude `high`, Grok `low`, Operator `none`. A one-line summary can appear in a collapsible Thinking row. The raw reasoning trace is not stored and not sent to the phone.
+
+Tools the model may call, each appended to the signed log as a `tool` line:
+
+- `read_repo_file` reads one path inside the VM checkout. `..`, `.env`, keys, and `.agentterm` are refused. The read runs in `guild serve` and is logged before the bytes return.
+- `lookup_log` reads recent signed lines for the thread.
+- `handoff` writes a task card (`task`, `assignee`, `status` of `open`, `handed-off`, or `done`) and @mentions that character.
+
+Images and PDFs attach from the composer. The model receives them as `input_image` or `input_file`. The log stores the file name only.
+
+Search in the thread asks the gateway to rerank with `cohere/rerank-v3.5`. If the key is missing or the gateway returns 403, the newest lines are shown instead.
+
+`GUILD_DEMO=1` streams a scripted in-character reply, a Thinking summary, a tool line, and a task card, and does not call the gateway. That is what the screenshots show.
+
 ## What gets logged
 
 `guild serve` writes `.agentterm/guild.jsonl`. Each line is an `agentterm` entry of kind `chat`, hash-chained and signed by `guild.key`. Model replies go through `adapter.Broker.Say`, the same broker method `collaborate adapter run` uses, and that `Say` writes the log. The chat broker refuses path claims and file writes.

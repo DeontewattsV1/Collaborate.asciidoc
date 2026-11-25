@@ -24,6 +24,7 @@ func Handler(svc *Service, token, allowOrigin string) http.Handler {
 	mux.HandleFunc("POST /v1/threads/{id}/messages", h.authed(h.postMessage))
 	mux.HandleFunc("POST /v1/threads/{id}/lines", h.authed(h.postLine))
 	mux.HandleFunc("POST /v1/threads/{id}/respond", h.authed(h.respond))
+	mux.HandleFunc("GET /v1/files", h.authed(h.readFile))
 	return mux
 }
 
@@ -91,15 +92,16 @@ func (a *api) messages(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) postMessage(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Text  string `json:"text"`
-		Reply string `json:"reply,omitempty"`
+		Text  string   `json:"text"`
+		Reply string   `json:"reply,omitempty"`
+		Files []string `json:"files,omitempty"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	id := r.PathValue("id")
-	msg, err := a.svc.Post(r.Context(), id, in.Text, false)
+	msg, err := a.svc.PostWithFiles(r.Context(), id, in.Text, in.Files, false)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -118,19 +120,43 @@ func (a *api) postMessage(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) postLine(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		From string `json:"from"`
-		Text string `json:"text"`
+		From       string   `json:"from"`
+		Text       string   `json:"text"`
+		Kind       string   `json:"kind,omitempty"`
+		Reasoning  string   `json:"reasoning,omitempty"`
+		Tool       string   `json:"tool,omitempty"`
+		Task       string   `json:"task,omitempty"`
+		Assignee   string   `json:"assignee,omitempty"`
+		CardStatus string   `json:"card_status,omitempty"`
+		Files      []string `json:"files,omitempty"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	msg, err := a.svc.RecordCharacter(r.PathValue("id"), in.From, in.Text)
+	msg, err := a.svc.RecordLine(Line{
+		Thread: r.PathValue("id"), From: in.From, Text: in.Text, Kind: in.Kind,
+		Reasoning: in.Reasoning, Tool: in.Tool, Task: in.Task, Assignee: in.Assignee,
+		CardStatus: in.CardStatus, Files: in.Files,
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"message": msg})
+}
+
+func (a *api) readFile(w http.ResponseWriter, r *http.Request) {
+	from := r.URL.Query().Get("from")
+	if from == "" {
+		from = "operator"
+	}
+	text, err := a.svc.ReadRepoFile(r.URL.Query().Get("thread"), from, r.URL.Query().Get("path"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"path": r.URL.Query().Get("path"), "text": text})
 }
 
 func (a *api) respond(w http.ResponseWriter, r *http.Request) {

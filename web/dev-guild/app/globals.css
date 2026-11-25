@@ -152,6 +152,44 @@ button { cursor: pointer; }
   40% { opacity: 1; transform: translateY(-2px); }
 }
 
+.thinking { margin-bottom: 6px; color: #d1d1d6; }
+.thinking summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.thinking p { margin: 4px 0 0; font-size: 13px; }
+.task-card {
+  align-self: flex-start;
+  margin: 8px 36px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #1c1c1e;
+  border: 1px solid rgba(10, 132, 255, 0.45);
+  max-width: min(72%, 420px);
+}
+.task-card h3 { margin: 0 0 4px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--outgoing); }
+.task-card p { margin: 0; }
+.task-card .meta { margin-top: 6px; color: var(--muted); font-size: 13px; }
+.file-chip {
+  display: inline-block;
+  margin-top: 6px;
+  margin-right: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+  font-size: 12px;
+}
+.search { padding: 6px 12px 0; }
+.search input, .hits {
+  width: 100%;
+  background: var(--field);
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--text);
+}
+.hits { margin: 6px 12px 0; width: auto; font-size: 13px; color: var(--muted); }
+.hits p { margin: 4px 0; }
+.attach { position: relative; width: 32px; height: 32px; display: grid; place-items: center; color: var(--outgoing); font-size: 22px; }
+.attach input { position: absolute; inset: 0; opacity: 0; }
+
 .composer {
   display: flex;
   gap: 8px;

@@ -42,6 +42,10 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
+  const [live, setLive] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState(null);
   const [profile, setProfile] = useState(null);
   const [composing, setComposing] = useState(false);
   const [error, setError] = useState("");
@@ -121,22 +125,82 @@ export default function App() {
     }
   }
 
+  function applyEvent(block) {
+    const name = (block.match(/^event: (.+)$/m) || [])[1];
+    const raw = (block.match(/^data: (.+)$/m) || [])[1];
+    if (!name || !raw) return;
+    const data = JSON.parse(raw);
+    if (name === "typing") setLive({ from: data.from, text: "", reasoning: "" });
+    if (name === "delta") {
+      setLive((prev) => ({ from: data.from, text: ((prev && prev.text) || "") + data.text, reasoning: prev && prev.reasoning }));
+    }
+    if (name === "reasoning") setLive((prev) => ({ ...(prev || { from: data.from, text: "" }), reasoning: data.summary }));
+    if (name === "fallback") setPending(true);
+  }
+
+  async function filePayload(list) {
+    const out = [];
+    for (const file of list) {
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+        reader.onerror = () => reject(new Error("could not read attachment"));
+        reader.readAsDataURL(file);
+      });
+      out.push({ name: file.name, mediaType: file.type, data });
+    }
+    return out;
+  }
+
   async function send() {
     const body = text.trim();
-    if (!body || pending) return;
+    if ((!body && files.length === 0) || pending) return;
     setText("");
+    const chosen = files;
+    setFiles([]);
     setPending(true);
+    setLive(null);
     setError("");
     try {
-      await api(`/api/guild/v1/threads/${active}/messages`, {
+      const attachments = await filePayload(chosen);
+      const res = await fetch("/api/guild/stream", {
         method: "POST",
-        body: JSON.stringify({ text: body }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thread: active, text: body, attachments }),
       });
-      await loadMessages(active, false);
+      if (!res.ok || !res.body) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "The guild didn't answer.");
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const step = await reader.read();
+        if (step.done) break;
+        buf += decoder.decode(step.value, { stream: true });
+        const blocks = buf.split("\n\n");
+        buf = blocks.pop() || "";
+        for (const block of blocks) applyEvent(block);
+      }
+      setLive(null);
+      await loadMessages(active, true);
+      await loadRoster();
     } catch (err) {
-      setPending(false);
       setError(err.message);
+    } finally {
+      setPending(false);
     }
+  }
+
+  async function searchHistory(event) {
+    event.preventDefault();
+    if (!query.trim()) {
+      setHits(null);
+      return;
+    }
+    const data = await api(`/api/guild/search?thread=${encodeURIComponent(active)}&q=${encodeURIComponent(query)}`);
+    setHits(data.messages || []);
   }
 
   async function openDM(id) {
@@ -254,8 +318,17 @@ export default function App() {
           {messages.map((m, i) => {
             const prev = messages[i - 1];
             const showTime = !prev || new Date(m.time) - new Date(prev.time) > 5 * 60 * 1000;
-            if (m.kind === "system") {
-              return <div className="system" key={m.id}>{m.text}</div>;
+            if (m.kind === "system" || m.kind === "tool") {
+              return <div className="system" key={m.id}>{m.kind === "tool" ? `${m.name} · ${m.tool}: ${m.text}` : m.text}</div>;
+            }
+            if (m.kind === "card") {
+              return (
+                <article className="task-card" key={m.id}>
+                  <h3>Task</h3>
+                  <p>{m.task || m.text}</p>
+                  <p className="meta">@{m.assignee} · {m.card_status}</p>
+                </article>
+              );
             }
             const person = byId[m.from] || { name: m.name, color: m.color || "#8e8e93", id: m.from };
             const lastMine = m.mine && messages.slice(i + 1).every((n) => !n.mine);
@@ -272,22 +345,51 @@ export default function App() {
                     {!m.mine && thread && thread.group ? (
                       <span className="name" style={{ color: person.color || "#8e8e93" }}>{person.name}</span>
                     ) : null}
+                    {m.reasoning ? (
+                      <details className="thinking">
+                        <summary>Thinking</summary>
+                        <p>{m.reasoning}</p>
+                      </details>
+                    ) : null}
                     {m.text}
+                    {(m.files || []).map((name) => <span className="file-chip" key={name}>{name}</span>)}
                   </div>
                 </div>
                 {lastMine && m.status ? <div className="receipt">{m.status}</div> : null}
               </div>
             );
           })}
-          {pending ? (
+          {live && live.text ? (
             <div className="bubble-row">
-              <Avatar id="operator" size="sm" />
+              <Avatar id={live.from || "claude"} size="sm" />
+              <div className="bubble in">
+                {live.reasoning ? (
+                  <details className="thinking">
+                    <summary>Thinking</summary>
+                    <p>{live.reasoning}</p>
+                  </details>
+                ) : null}
+                {live.text}
+              </div>
+            </div>
+          ) : null}
+          {pending && !(live && live.text) ? (
+            <div className="bubble-row">
+              <Avatar id={(live && live.from) || "claude"} size="sm" />
               <div className="bubble in" aria-label="Typing">
                 <span className="typing"><i /><i /><i /></span>
               </div>
             </div>
           ) : null}
         </div>
+        <form className="search" onSubmit={searchHistory}>
+          <input aria-label="Search this chat" placeholder="Search this chat" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </form>
+        {hits ? (
+          <div className="hits">
+            {hits.length === 0 ? <p>No matching lines.</p> : hits.slice(0, 3).map((m) => <p key={m.id}>{m.name}: {m.text || m.task}</p>)}
+          </div>
+        ) : null}
         <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
           {suggestions.length ? (
             <div className="mentions">
@@ -304,6 +406,15 @@ export default function App() {
               ))}
             </div>
           ) : null}
+          <label className="attach">
+            +
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"
+              aria-label="Attach image or PDF"
+              onChange={(e) => setFiles(Array.from(e.target.files || []))}
+            />
+          </label>
           <textarea
             rows={1}
             placeholder="iMessage"

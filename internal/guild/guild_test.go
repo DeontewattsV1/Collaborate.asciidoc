@@ -339,6 +339,44 @@ func TestHoldKeepsTheProviderQuietUntilAsked(t *testing.T) {
 	}
 }
 
+func TestReadRepoFileIsLoggedAndRefusesSecrets(t *testing.T) {
+	svc := testService(t, true)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello guild"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("SECRET=1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	svc.Repo = dir
+	if _, err := svc.ReadRepoFile("guild", "claude", "../.env"); err == nil {
+		t.Fatal("path escape was allowed")
+	}
+	if _, err := svc.ReadRepoFile("guild", "claude", ".env"); err == nil {
+		t.Fatal("secret file was readable")
+	}
+	text, err := svc.ReadRepoFile("guild", "claude", "README.md")
+	if err != nil || text != "hello guild" {
+		t.Fatalf("read %q err=%v", text, err)
+	}
+	msgs, err := svc.Messages("guild", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saw bool
+	for _, m := range msgs {
+		if m.Tool == "read_repo_file" && strings.Contains(m.Text, "README.md") {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("tool call missing from log: %+v", msgs)
+	}
+	if _, err := svc.Verify(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func testService(t *testing.T, demo bool) *testSvc {
 	t.Helper()
 	dir := t.TempDir()

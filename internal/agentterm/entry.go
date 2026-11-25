@@ -76,16 +76,22 @@ var serverKinds = map[string]bool{KindGenesis: true, KindExecResult: true, KindE
 // JSON field names are part of the verified bytes. Add a field only together
 // with the validator in State.apply.
 type ChatBody struct {
-	Thread   string   `json:"thread"`
-	ID       string   `json:"id"`
-	Kind     string   `json:"kind"`
-	From     string   `json:"from,omitempty"`
-	Text     string   `json:"text,omitempty"`
-	Mentions []string `json:"mentions,omitempty"`
-	Title    string   `json:"title,omitempty"`
-	Members  []string `json:"members,omitempty"`
-	Status   string   `json:"status,omitempty"`
-	Tokens   int      `json:"tokens,omitempty"`
+	Thread     string   `json:"thread"`
+	ID         string   `json:"id"`
+	Kind       string   `json:"kind"`
+	From       string   `json:"from,omitempty"`
+	Text       string   `json:"text,omitempty"`
+	Mentions   []string `json:"mentions,omitempty"`
+	Title      string   `json:"title,omitempty"`
+	Members    []string `json:"members,omitempty"`
+	Status     string   `json:"status,omitempty"`
+	Tokens     int      `json:"tokens,omitempty"`
+	Reasoning  string   `json:"reasoning,omitempty"`
+	Tool       string   `json:"tool,omitempty"`
+	Task       string   `json:"task,omitempty"`
+	Assignee   string   `json:"assignee,omitempty"`
+	CardStatus string   `json:"card_status,omitempty"`
+	Files      []string `json:"files,omitempty"`
 }
 
 // IsAgentKind reports whether kind is requested (and signed) by an agent.
