@@ -57,22 +57,15 @@ agentterm claim internal/foo && agentterm run -- go test ./internal/foo && agent
 
 See [`docs/AGENT-TERMINAL.md`](docs/AGENT-TERMINAL.md) for the protocol, commands and limits.
 
-## Git Locker assistant agents
-
-Every one of the 1,000 seeds in the [Git Locker Index](agents/locker/GIT-LOCKER-INDEX.md) is a runnable assistant agent with its own role, workflow and domain lens. In `assist` mode, a router picks a team of specialists, each writes a brief, a more capable primary model answers using the briefs, and a guardian reviews the answer. Coordinator agents can delegate recursively, within limits on depth and number of model calls. Try `python3 scripts/locker_agents.py assist --task "..."` offline, or run **Actions → locker-agents** with your API keys. See [`docs/LOCKER-AGENTS.md`](docs/LOCKER-AGENTS.md).
-
 ## iPhone sandbox terminal
 
 To drive the repository and its agents from an iPhone at $0 cost, open a free GitHub Codespace (configured automatically by `.devcontainer/devcontainer.json`) or connect Secure ShellFish to an Oracle Cloud Always Free Ubuntu 24.04 ARM64 VM or Google Cloud Always Free VM bootstrapped with `scripts/sandbox/bootstrap-ubuntu.sh`. It is a re-runnable setup: an unprivileged `sandbox` user (for VMs), the toolchain, the builds, the checks, and the agent terminal on loopback. See [`docs/IPHONE-SANDBOX.md`](docs/IPHONE-SANDBOX.md).
 
-## Live sandboxes, multi-model review and container image
+## Keys and the container image
 
-- **`opensandbox-sandbox`** runs the test suite for any ref inside a live OpenSandbox sandbox.
-- **`render-sandbox`** runs a live two-agent `collaborate` broker and MCP demo inside a Render Sandbox (short-lived demo; no free tier—see [`docs/RENDER-SANDBOX.md`](docs/RENDER-SANDBOX.md)).
-- **`agent-model-bridge`** has OpenAI, Anthropic, Gemini and xAI models review a PR and cross-examine each other.
-- **Container image:** each push to `main` publishes the agent terminal as a signed image, `ghcr.io/deontewattsv1/collaborate.asciidoc`.
+Provider keys for the guild live in GitHub Environments `agent-openai`, `agent-anthropic`, `agent-gemini`, and `agent-xai` (`MODEL_API_KEY`, `MODEL_NAME`). Create them with `bash scripts/setup_github_environments.sh` in a terminal. Copy the values onto the VM yourself. GitHub will not show a secret back. See [`docs/LIVE-SETUP.md`](docs/LIVE-SETUP.md) and [`docs/DEV-GUILD.md`](docs/DEV-GUILD.md).
 
-Each provider key lives in its own GitHub Environment, restricted to `main`. Run `bash scripts/setup_github_environments.sh` once, **in a terminal**: it creates every environment and asks only for the keys. Workflows without a key finish green with a "not configured" notice. See [`docs/LIVE-SETUP.md`](docs/LIVE-SETUP.md) and [`docs/AGENT-MODEL-BRIDGE.md`](docs/AGENT-MODEL-BRIDGE.md).
+Each push to `main` publishes the agent terminal as a signed image, `ghcr.io/deontewattsv1/collaborate.asciidoc`.
 
 ## Observability
 
@@ -181,8 +174,6 @@ Set `COLLAB_AGENT` to choose the signing identity; command-level `--agent` overr
 `.github/workflows/ci.yml` runs on GitHub-hosted runners with only `contents: read`; checkout credentials are not persisted. The stable required-check context is `go-verify`; it runs formatting, uncached tests, race tests, `go vet`, and builds both CLIs with CGO/system SQLite enabled. This is remote CI evidence, not proof that the code is correct or that tests themselves are adequate.
 
 The repository ruleset `main-require-independent-ci` (ID `27378635`) is active on the default branch and currently requires `go-verify`; the checked-in declarative proposal now includes both `go-verify` and `agent-registry`. The registry workflow runs independently but does not become a live merge blocker until the GitHub ruleset is updated. That live settings change is intentionally separate from this code change. The registry includes common AI platforms with no guessed bot IDs; unconfigured entries fail closed until verified identities are entered. See [`docs/AGENT-REGISTRY.md`](docs/AGENT-REGISTRY.md) and [`.github/agent-registry.schema.json`](.github/agent-registry.schema.json).
-
-The live MCP pilot connected OpenAI GPT-6 Luna and Google Gemini 3.8 Flash through separate MCP stdio processes, and tested each under a separate Unix UID. Own-workspace access succeeded; sibling worktree/key and broker-state access were denied. See [`docs/MCP-LIVE-PILOT.md`](docs/MCP-LIVE-PILOT.md) and [`scripts/mcp_live_client.py`](scripts/mcp_live_client.py) for evidence and the harness. This validates a custom model-client harness, not a third-party IDE/assistant host. The tested boundary is Unix file permissions, not a hostile-code sandbox: the model host and its MCP child share the agent UID, and network/process capabilities are not restricted. Do not treat the example host template as isolation by itself.
 
 ## Remote deployment, backup, and trust boundaries
 

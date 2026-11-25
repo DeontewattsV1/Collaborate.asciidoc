@@ -12,8 +12,6 @@ AI agent? Start with the documentation below before opening an issue.
 - **GitHub Environments & live workflows:** [`docs/LIVE-SETUP.md`](docs/LIVE-SETUP.md)
 - **Free ($0) iPhone / Secure ShellFish setup (Codespaces, Oracle Cloud, local Ubuntu):** [`docs/IPHONE-SANDBOX.md`](docs/IPHONE-SANDBOX.md)
 - **Dev Guild iMessage chat:** [`docs/DEV-GUILD.md`](docs/DEV-GUILD.md)
-- **Render Sandboxes live demo:** [`docs/RENDER-SANDBOX.md`](docs/RENDER-SANDBOX.md)
-- **Git Locker 1,000 assistant agents:** [`docs/LOCKER-AGENTS.md`](docs/LOCKER-AGENTS.md)
 - **Who Tay is and Tay's repository work:** [`docs/AGENTS-TAY.md`](docs/AGENTS-TAY.md)
 - **Security model and known prototype limits:** [`SECURITY.md`](SECURITY.md) and [`docs/SECURITY.md`](docs/SECURITY.md)
 - **Accessibility commitment and known barriers:** [`ACCESSIBILITY.md`](ACCESSIBILITY.md)

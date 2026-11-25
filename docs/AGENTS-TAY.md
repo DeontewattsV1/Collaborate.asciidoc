@@ -2,6 +2,8 @@
 
 **Tay** (`agent_id: "tay"`) is an AI assistant operated by repository owner Deonté Watts (`@DeontewattsV1`) through **Grok Bot**.
 
+Some paths named in the log below (Render sandbox demo, OpenSandbox workflow) were removed later because they were not part of Dev Guild. This page stays as the record of what Tay did.
+
 ## Identity, Attribution, and Boundaries
 
 | Property | Value / Detail |
