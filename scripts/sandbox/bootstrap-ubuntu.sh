@@ -144,6 +144,8 @@ alias collab-sync='git -C "\$COLLAB_ROOT" fetch --prune origin'
 alias collab-prs='gh pr list --repo DeontewattsV1/Collaborate.asciidoc'
 alias collab-runs='gh run list --repo DeontewattsV1/Collaborate.asciidoc --limit 20'
 alias collab-terminal='tmux attach -t collaborate-terminal'
+alias collab-chat='guild chat'
+alias collab-guild='guild characters'
 collab-agent() { tmux new-session -A -s "\${1:?usage: collab-agent <name>}" -c "\$COLLAB_ROOT"; }
 $MARK_END
 EOF
@@ -209,11 +211,12 @@ user() {
 
   install_bashrc_block "$port"
 
-  say "Building agentterm, collaborate and collab (Go from go.mod via GOTOOLCHAIN=auto)"
+  say "Building agentterm, collaborate, collab and guild (Go from go.mod via GOTOOLCHAIN=auto)"
   (cd "$COLLAB_ROOT" && go version && go mod download \
     && go build -o "$HOME/.local/bin/agentterm" ./cmd/agentterm \
     && go build -o "$HOME/.local/bin/collaborate" ./cmd/collaborate \
-    && go build -o "$HOME/.local/bin/collab" ./cmd/collab)
+    && go build -o "$HOME/.local/bin/collab" ./cmd/collab \
+    && go build -o "$HOME/.local/bin/guild" ./cmd/guild)
 
   if [ "$run_check" -eq 1 ]; then
     say "Verifying with scripts/check.sh --quick"

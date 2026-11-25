@@ -15,7 +15,7 @@ environments are supported, and the limitations we already know about.
 
 The repository is built around text-first and terminal-native workflows:
 
-- **Command-line tools (`collaborate`, `collab`, `agentterm`, `agent-registry-check`, `scripts/locker_agents.py`, `scripts/check.sh`):**
+- **Command-line tools (`collaborate`, `collab`, `agentterm`, `guild`, `agent-registry-check`, `scripts/check.sh`):**
   All CLIs produce line-oriented plain text, JSON, or AsciiDoc to standard
   output and standard error without interactive full-screen curses/TUI cursor
   repositioning. This keeps output compatible with terminal screen readers and

@@ -62,20 +62,6 @@ for env in agent-openai agent-anthropic agent-gemini agent-xai; do
   ask_secret "$env" MODEL_API_KEY "API key"
 done
 
-ensure_env sandbox-opensandbox
-set_var sandbox-opensandbox OPEN_SANDBOX_DOMAIN "${OPEN_SANDBOX_DOMAIN:-}"
-set_var sandbox-opensandbox OPEN_SANDBOX_PROTOCOL "${OPEN_SANDBOX_PROTOCOL:-https}"
-if [ -z "${OPEN_SANDBOX_DOMAIN:-}" ] && [ -t 0 ]; then
-  read -r -p "  OpenSandbox server host[:port] (OPEN_SANDBOX_DOMAIN), Enter to skip: " d
-  set_var sandbox-opensandbox OPEN_SANDBOX_DOMAIN "$d"
-fi
-ask_secret sandbox-opensandbox OPEN_SANDBOX_API_KEY "OpenSandbox API key"
-
-ensure_env sandbox-render
-set_var sandbox-render RENDER_WORKSPACE_ID "${RENDER_WORKSPACE_ID:-tea-dc3ge117lnhs73fnjpig}"
-set_var sandbox-render RENDER_SANDBOX_GROUP_ID "${RENDER_SANDBOX_GROUP_ID:-sbg-dc3h680u01pc73eld1ng}"
-ask_secret sandbox-render RENDER_API_KEY "Render API key"
-
 echo
-echo "Done. Run a workflow from Actions: agent-model-bridge, opensandbox-sandbox or render-sandbox."
+echo "Done. Copy each MODEL_API_KEY onto the VM as the matching provider variable (see docs/DEV-GUILD.md). GitHub will not show the secret back."
 echo "Optional: in Settings > Environments, add yourself as a required reviewer to approve each paid run."

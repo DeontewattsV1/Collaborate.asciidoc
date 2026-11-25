@@ -9,10 +9,9 @@ This repository is an experimental multi-agent collaboration system, **not a pro
 | `cmd/collaborate`, `internal/broker`, `internal/store`, `internal/mcpserver` | **Pilot 1:** an Ed25519-authenticated broker with leases, a signed ledger and an MCP bridge |
 | `cmd/collab`, `internal/collab`, `internal/sqlite` | **Pilot 2:** a separate local pilot with a shared-token model. Not interchangeable with pilot 1 (see `docs/SECURITY.md`). |
 | `cmd/agentterm`, `internal/agentterm` | Shared agent terminal: clock in and out, claims, a signed log, a web view (`docs/AGENT-TERMINAL.md`, `Dockerfile`) |
+| `cmd/guild`, `internal/guild`, `web/dev-guild` | Dev Guild iMessage bridge. Characters, personalities, and the owner API. Messages are `chat` entries in the agentterm log (`docs/DEV-GUILD.md`) |
 | `cmd/agent-registry-check`, `internal/agentregistry`, `.github/agent-registry.json` | Which GitHub identity and branch prefix belongs to which agent; this backs the required `agent-registry` check |
 | `internal/ghcoord`, `.github/workflows/collaborate-coordination.yml` | The `coordinate` check: PR path leases and `Collaborate-Claim:` lines |
-| `scripts/agent_model_bridge.py`, `scripts/opensandbox_run.py` | Multi-model PR review and live sandbox runs (`docs/LIVE-SETUP.md`) |
-| `scripts/locker_agents.py`, `agents/locker/`, `.github/workflows/locker-agents.yml` | 1,000 Git Locker assistant agents that brief a primary model (`docs/LOCKER-AGENTS.md`); regenerate the index with `python3 scripts/locker_agents.py index --write` |
 | `.devcontainer/devcontainer.json`, `scripts/sandbox/bootstrap-ubuntu.sh`, `docs/IPHONE-SANDBOX.md` | Set up a free ($0) GitHub Codespaces or Oracle Always Free Ubuntu sandbox driven from an iPhone (Secure ShellFish) or any SSH client |
 | `scripts/check.sh` | **The one verification command.** CI's `go-verify` runs exactly this. |
 | `scripts/repo_hygiene.py` | Guards against recurring repository mistakes (see `.learnings/`) |

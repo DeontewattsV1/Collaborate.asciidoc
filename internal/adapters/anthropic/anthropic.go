@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"collaborate/internal/adapter"
 	"collaborate/internal/modelplugin"
@@ -31,10 +32,14 @@ func (a *Adapter) Run(ctx context.Context, req adapter.Request, broker adapter.B
 	if err := ctx.Err(); err != nil {
 		return adapter.Response{}, err
 	}
+	messages, system := anthropicMessages(req)
 	body := map[string]any{
 		"model":      a.client.Model(),
 		"max_tokens": 1024,
-		"messages":   []map[string]string{{"role": "user", "content": req.Prompt}},
+		"messages":   messages,
+	}
+	if system != "" {
+		body["system"] = system
 	}
 	var result struct {
 		Content []struct {
@@ -62,6 +67,38 @@ func (a *Adapter) Run(ctx context.Context, req adapter.Request, broker adapter.B
 		return adapter.Response{}, err
 	}
 	return modelplugin.Publish(broker, text)
+}
+
+func anthropicMessages(req adapter.Request) ([]map[string]string, string) {
+	type turn struct{ role, text string }
+	seq := make([]turn, 0, len(req.Prior)+1)
+	for _, prior := range req.Prior {
+		role := "user"
+		if prior.Role == "assistant" {
+			role = "assistant"
+		}
+		if strings.TrimSpace(prior.Text) == "" {
+			continue
+		}
+		seq = append(seq, turn{role, prior.Text})
+	}
+	seq = append(seq, turn{"user", req.Prompt})
+	merged := make([]turn, 0, len(seq))
+	for _, item := range seq {
+		if n := len(merged); n > 0 && merged[n-1].role == item.role {
+			merged[n-1].text += "\n" + item.text
+			continue
+		}
+		merged = append(merged, item)
+	}
+	if len(merged) == 0 || merged[0].role != "user" {
+		merged = append([]turn{{"user", "(the conversation continues)"}}, merged...)
+	}
+	out := make([]map[string]string, len(merged))
+	for i, item := range merged {
+		out[i] = map[string]string{"role": item.role, "content": item.text}
+	}
+	return out, strings.TrimSpace(req.System)
 }
 
 var _ adapter.Adapter = (*Adapter)(nil)

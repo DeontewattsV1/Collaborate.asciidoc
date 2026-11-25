@@ -59,6 +59,9 @@ const (
 	KindGenesis    = "genesis"
 	KindExecResult = "exec_result"
 	KindExpire     = "expire"
+	// KindChat is a Dev Guild message. The guild bridge writes it; agents
+	// cannot request it. It stays in the same hash chain agentterm verify checks.
+	KindChat = "chat"
 )
 
 var agentKinds = map[string]bool{
@@ -67,7 +70,29 @@ var agentKinds = map[string]bool{
 	KindFinding: true, KindFindingStatus: true, KindNote: true,
 }
 
-var serverKinds = map[string]bool{KindGenesis: true, KindExecResult: true, KindExpire: true}
+var serverKinds = map[string]bool{KindGenesis: true, KindExecResult: true, KindExpire: true, KindChat: true}
+
+// ChatBody is one Dev Guild transcript line stored in the signed log.
+// JSON field names are part of the verified bytes. Add a field only together
+// with the validator in State.apply.
+type ChatBody struct {
+	Thread     string   `json:"thread"`
+	ID         string   `json:"id"`
+	Kind       string   `json:"kind"`
+	From       string   `json:"from,omitempty"`
+	Text       string   `json:"text,omitempty"`
+	Mentions   []string `json:"mentions,omitempty"`
+	Title      string   `json:"title,omitempty"`
+	Members    []string `json:"members,omitempty"`
+	Status     string   `json:"status,omitempty"`
+	Tokens     int      `json:"tokens,omitempty"`
+	Reasoning  string   `json:"reasoning,omitempty"`
+	Tool       string   `json:"tool,omitempty"`
+	Task       string   `json:"task,omitempty"`
+	Assignee   string   `json:"assignee,omitempty"`
+	CardStatus string   `json:"card_status,omitempty"`
+	Files      []string `json:"files,omitempty"`
+}
 
 // IsAgentKind reports whether kind is requested (and signed) by an agent.
 func IsAgentKind(kind string) bool { return agentKinds[kind] }

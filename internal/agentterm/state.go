@@ -152,6 +152,8 @@ func (s *State) apply(e Entry, t time.Time) error {
 		}
 		delete(s.Execs, b.Request)
 		return nil
+	case KindChat:
+		return validateChat(e.Body)
 	}
 	if !agentKinds[e.Kind] {
 		return fmt.Errorf("unknown kind %q", e.Kind)
@@ -430,6 +432,70 @@ func (s *State) covered(sess *Session, p string) bool {
 		}
 	}
 	return false
+}
+
+var chatIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$`)
+
+func validateChat(body string) error {
+	var b ChatBody
+	if err := strictJSON(body, &b); err != nil {
+		return err
+	}
+	if !chatIDPattern.MatchString(b.Thread) || !chatIDPattern.MatchString(b.ID) {
+		return errors.New("chat: thread and id are required")
+	}
+	switch b.Kind {
+	case "thread":
+		if b.Title == "" || len(b.Title) > 80 || len(b.Members) == 0 || len(b.Members) > maxPaths {
+			return errors.New("chat: thread needs a title and 1-50 members")
+		}
+		for _, m := range b.Members {
+			if !chatIDPattern.MatchString(m) {
+				return errors.New("chat: bad member id")
+			}
+		}
+	case "message", "system", "tool", "card":
+		if b.From == "" || !chatIDPattern.MatchString(b.From) {
+			return errors.New("chat: from is required")
+		}
+		if b.Kind != "card" && (b.Text == "" || len(b.Text) > maxText) {
+			return errors.New("chat: text is required (max 4000 bytes)")
+		}
+		if b.Kind == "card" && (b.Task == "" || len(b.Task) > 400 || !chatIDPattern.MatchString(b.Assignee)) {
+			return errors.New("chat: card needs a task and assignee")
+		}
+		if b.Kind == "card" && b.CardStatus != "open" && b.CardStatus != "handed-off" && b.CardStatus != "done" {
+			return errors.New("chat: card status must be open, handed-off, or done")
+		}
+		if b.Kind == "tool" && (b.Tool == "" || len(b.Tool) > 64) {
+			return errors.New("chat: tool name is required")
+		}
+		if len(b.Reasoning) > 400 {
+			return errors.New("chat: reasoning summary is too long")
+		}
+		if len(b.Mentions) > 8 {
+			return errors.New("chat: too many mentions")
+		}
+		for _, m := range b.Mentions {
+			if !chatIDPattern.MatchString(m) {
+				return errors.New("chat: bad mention")
+			}
+		}
+		if len(b.Files) > 4 {
+			return errors.New("chat: too many attachments")
+		}
+		for _, f := range b.Files {
+			if f == "" || len(f) > 80 || strings.ContainsAny(f, "/\\") {
+				return errors.New("chat: attachment names are file names only")
+			}
+		}
+		if b.Tokens < 0 {
+			return errors.New("chat: negative token count")
+		}
+	default:
+		return errors.New("chat: kind must be thread, message, or system")
+	}
+	return nil
 }
 
 func strictJSON(body string, v any) error {

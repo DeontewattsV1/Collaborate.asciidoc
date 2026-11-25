@@ -38,5 +38,5 @@ The optional Python scripts in `scripts/` can be traced with the standard distro
 ```sh
 pip install opentelemetry-distro opentelemetry-exporter-otlp
 opentelemetry-bootstrap --action=install
-opentelemetry-instrument python3 scripts/mcp_live_client.py ...
+opentelemetry-instrument python3 scripts/check.sh --quick
 ```

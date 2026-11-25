@@ -36,6 +36,7 @@ trap 'rm -rf "$out"' EXIT
 step "ruleset policy"            python3 .github/scripts/validate_ruleset.py
 step "repository hygiene"        python3 scripts/repo_hygiene.py
 step "python tests (scripts/)"   python3 -m unittest discover -s scripts -p 'test_*.py'
+step "dev guild gateway tests"  bash -c 'cd web/dev-guild && npm ci --ignore-scripts --no-audit --no-fund && node --test lib/gateway.test.js'
 step "python tests (tests/)"     python3 -m unittest discover -s tests -p 'test_*.py'
 step "gofmt"                     bash -c 'files=$(gofmt -l cmd internal); [ -z "$files" ] || { echo "$files"; exit 1; }'
 step "go vet"                    go vet ./...
@@ -45,7 +46,8 @@ if [ "$quick" = false ]; then
 fi
 step "build binaries"            bash -c "go build -trimpath -buildvcs=false -o '$out/collaborate' ./cmd/collaborate \
                                    && go build -trimpath -buildvcs=false -o '$out/collab' ./cmd/collab \
-                                   && go build -trimpath -buildvcs=false -o '$out/agentterm' ./cmd/agentterm"
+                                   && go build -trimpath -buildvcs=false -o '$out/agentterm' ./cmd/agentterm \
+                                   && go build -trimpath -buildvcs=false -o '$out/guild' ./cmd/guild"
 if command -v actionlint >/dev/null 2>&1; then
   step "actionlint"              actionlint -shellcheck=
 else

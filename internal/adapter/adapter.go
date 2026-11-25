@@ -17,9 +17,19 @@ import (
 	"strings"
 )
 
+// Turn is one earlier message in a conversation. Role is "user" or "assistant".
+type Turn struct {
+	Role string
+	Text string
+}
+
 // Request contains provider-independent input for an adapter.
+// System is the character personality. Prior is the thread so far, not
+// including Prompt, which is the newest message the model should answer.
 type Request struct {
 	Prompt string
+	System string
+	Prior  []Turn
 }
 
 // Response is the provider-independent result returned by an adapter.

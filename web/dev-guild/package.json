@@ -1,0 +1,17 @@
+{
+  "name": "dev-guild",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "node --test lib/gateway.test.js"
+  },
+  "dependencies": {
+    "ai": "^7.0.181",
+    "next": "15.5.29",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  }
+}
