@@ -72,7 +72,8 @@ fi
 ask_secret sandbox-opensandbox OPEN_SANDBOX_API_KEY "OpenSandbox API key"
 
 ensure_env sandbox-render
-set_var sandbox-render RENDER_SANDBOX_GROUP_ID "${RENDER_SANDBOX_GROUP_ID:-sbg-dc225m56e07s73envfrg}"
+set_var sandbox-render RENDER_WORKSPACE_ID "${RENDER_WORKSPACE_ID:-tea-dc3ge117lnhs73fnjpig}"
+set_var sandbox-render RENDER_SANDBOX_GROUP_ID "${RENDER_SANDBOX_GROUP_ID:-sbg-dc3h680u01pc73eld1ng}"
 ask_secret sandbox-render RENDER_API_KEY "Render API key"
 
 echo
