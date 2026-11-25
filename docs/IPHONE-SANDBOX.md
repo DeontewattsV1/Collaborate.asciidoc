@@ -44,7 +44,8 @@ collab-terminal
    - **Image:** Canonical Ubuntu 24.04 LTS (`aarch64` / ARM64)
    - **Shape:** `VM.Standard.A1.Flex` (Ampere A1, e.g. 2 OCPUs / 12 GB RAM; Always Free allows up to 4 OCPUs and 24 GB RAM total) or `VM.Standard.E2.1.Micro`
    - **SSH key:** paste your Secure ShellFish **Secure Enclave** public key (`ssh-ed25519 ...`) during VM creation.
-   - **Firewall (VCN Security List / NSG):** allow **only TCP port 22** (or restrict to your Tailscale network). Leave ports `8080` and `8787` closed.
+   - **Firewall (VCN Security List / NSG):** allow **only TCP port 22** (or restrict to your Tailscale network). Leave ports `8080` and `8787` closed. On the Ubuntu host itself, you can also verify/lock down UFW (`sudo ufw allow OpenSSH && sudo ufw enable && sudo ufw status`) and confirm `agentterm` binds only loopback (`ss -ltn`).
+   - **Local Ubuntu Server / LXD alternative ($0):** the same `admin` and `user` steps work unchanged on your own Ubuntu 24.04 machine or an LXD container (`lxc launch ubuntu:24.04`), and Ubuntu Pro is free for up to 5 personal machines if you want ESM/Livepatch security updates.
 2. **Admin step (as `ubuntu`):** connect from Secure ShellFish with Username `ubuntu`, Host `<oracle-public-ip>`, Port `22`, **Key agent forwarding OFF**.
    - Note: while `Collaborate.asciidoc` is private, raw GitHub URLs return 404 without a token. Either run after making the script reachable, pass a fine-grained read token header to `curl`, or run `gh auth login` first.
 
