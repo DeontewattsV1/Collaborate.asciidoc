@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+const STARTER_IDS = ["claude", "grok", "gemini", "codex", "tay"];
+
 async function api(path, options) {
   const res = await fetch(path, {
     ...options,
@@ -70,6 +72,7 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState("owner");
+  const [ownerName, setOwnerName] = useState("Owner");
   const [inviteParam, setInviteParam] = useState("");
   const [pass, setPass] = useState("");
   const [guestName, setGuestName] = useState("");
@@ -95,10 +98,18 @@ export default function App() {
   const [composing, setComposing] = useState(false);
   const [error, setError] = useState("");
 
-  const [groupSheet, setGroupSheet] = useState(null); // null | "members" | "custom" | "invite"
+  const [groupSheet, setGroupSheet] = useState(null); // null | "members" | "settings" | "custom" | "invite"
   const [memberFilter, setMemberFilter] = useState("");
   const [inviteInfo, setInviteInfo] = useState(null);
   const [copied, setCopied] = useState("");
+
+  // First-run group setup & settings state
+  const [setupTitle, setSetupTitle] = useState("Dev Guild");
+  const [setupOwner, setSetupOwner] = useState("");
+  const [setupMembers, setSetupMembers] = useState([]);
+  const [setupFilter, setSetupFilter] = useState("");
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState("");
 
   // Custom agent form state
   const [customName, setCustomName] = useState("");
@@ -115,16 +126,18 @@ export default function App() {
   const scroller = useRef(null);
   const after = useRef(0);
 
-  const byId = useMemo(() => {
-    const map = { owner: { id: "owner", name: "Deonte", kind: "owner", color: "#0A84FF" } };
-    for (const c of characters) map[c.id] = c;
-    return map;
-  }, [characters]);
-
   const guildThread = useMemo(
     () => threads.find((t) => t.id === "guild") || threads[0],
     [threads],
   );
+  const effectiveOwnerName = (guildThread && guildThread.ownerName) || ownerName || "Owner";
+
+  const byId = useMemo(() => {
+    const map = { owner: { id: "owner", name: effectiveOwnerName, kind: "owner", color: "#0A84FF" } };
+    for (const c of characters) map[c.id] = c;
+    return map;
+  }, [characters, effectiveOwnerName]);
+
   const groupMemberSet = useMemo(
     () => new Set((guildThread && guildThread.members) || []),
     [guildThread],
@@ -135,8 +148,18 @@ export default function App() {
       api("/api/guild/v1/characters"),
       api("/api/guild/v1/threads"),
     ]);
-    setCharacters(cast.characters || []);
-    setThreads(convos.threads || []);
+    const list = cast.characters || [];
+    const threadList = convos.threads || [];
+    setCharacters(list);
+    setThreads(threadList);
+    const g = threadList.find((t) => t.id === "guild");
+    if (g) {
+      if (g.title) setSetupTitle(g.title);
+      if (g.ownerName) {
+        setOwnerName(g.ownerName);
+        setSetupOwner((prev) => prev || g.ownerName);
+      }
+    }
   }, []);
 
   const loadMessages = useCallback(async (thread, reset) => {
@@ -166,6 +189,13 @@ export default function App() {
       .then((data) => {
         setAuthed(!!data.ok);
         if (data.role) setRole(data.role);
+        if (data.participant && data.participant.name) {
+          setOwnerName(data.participant.name);
+          setSetupOwner(data.participant.name);
+        }
+        if (data.group && data.group.title) {
+          setSetupTitle(data.group.title);
+        }
       })
       .catch(() => setAuthed(false))
       .finally(() => setReady(true));
@@ -185,6 +215,7 @@ export default function App() {
     setPending(false);
     const cached = readCachedMessages(active);
     if (cached.length) setMessages(cached);
+    else setMessages([]);
     loadMessages(active, true).catch((err) => setError(err.message));
     const timer = setInterval(() => {
       loadMessages(active, false).catch(() => {});
@@ -366,9 +397,60 @@ export default function App() {
     await loadRoster();
   }
 
+  async function completeGroupSetup(event, startEmpty = false) {
+    if (event) event.preventDefault();
+    if (setupBusy) return;
+    setSetupBusy(true);
+    setError("");
+    try {
+      await api("/api/guild/v1/group", {
+        method: "POST",
+        body: JSON.stringify({
+          title: setupTitle.trim() || "Dev Guild",
+          ownerName: setupOwner.trim() || "Owner",
+          members: startEmpty ? [] : setupMembers,
+          setupDone: true,
+          replaceMembers: true,
+        }),
+      });
+      await loadRoster();
+      await loadMessages("guild", true);
+      setActive("guild");
+      setMobileList(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSetupBusy(false);
+    }
+  }
+
+  async function saveGroupSettings(event) {
+    event.preventDefault();
+    if (setupBusy) return;
+    setSetupBusy(true);
+    setSettingsMsg("");
+    try {
+      await api("/api/guild/v1/group", {
+        method: "POST",
+        body: JSON.stringify({
+          title: setupTitle.trim() || "Dev Guild",
+          ownerName: setupOwner.trim() || "Owner",
+          setupDone: true,
+        }),
+      });
+      await loadRoster();
+      setSettingsMsg("Group settings saved.");
+    } catch (err) {
+      setSettingsMsg(err.message);
+    } finally {
+      setSetupBusy(false);
+    }
+  }
+
   async function openGroupSheet(tab) {
     setGroupSheet(tab);
     setCustomMsg("");
+    setSettingsMsg("");
     if (tab === "invite" && role === "owner" && !inviteInfo) {
       try {
         const data = await api("/api/guild/invite");
@@ -401,7 +483,7 @@ export default function App() {
       await loadRoster();
       setActive("guild");
       setMobileList(false);
-      setCustomMsg(`Added ${res.agent.name} (@${res.agent.id}) to The Dev Guild.`);
+      setCustomMsg(`Added ${res.agent.name} (@${res.agent.id}) to the group.`);
       setCustomName("");
       setCustomPersona("");
       setCustomRole("");
@@ -420,6 +502,10 @@ export default function App() {
       setCopied(label);
       setTimeout(() => setCopied(""), 1800);
     }).catch(() => {});
+  }
+
+  function toggleSetupMember(id) {
+    setSetupMembers((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   }
 
   const thread = threads.find((t) => t.id === active) || threads[0];
@@ -454,6 +540,13 @@ export default function App() {
       : characters;
   }, [characters, memberFilter]);
 
+  const filteredSetupMembers = useMemo(() => {
+    const q = setupFilter.trim().toLowerCase();
+    return q
+      ? characters.filter((c) => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || (c.role || "").toLowerCase().includes(q))
+      : characters;
+  }, [characters, setupFilter]);
+
   if (!ready) return <main className="login" />;
   if (!authed) {
     if (inviteParam) {
@@ -461,7 +554,7 @@ export default function App() {
         <main className="login">
           <form onSubmit={joinWithInvite}>
             <img className="avatar-lg" alt="" src="/avatars/tay.png" />
-            <h1>Join The Dev Guild</h1>
+            <h1>Join Group Chat</h1>
             <p>You were invited to the group chat. Pick your name (or agent persona) to join.</p>
             <input
               autoFocus
@@ -494,12 +587,12 @@ export default function App() {
         <form onSubmit={signIn}>
           <img className="avatar-lg" alt="" src="/avatars/claude.png" />
           <h1>Dev Guild</h1>
-          <p>Enter the guild access code to open the group chat.</p>
+          <p>Enter your access passphrase to open your group chat.</p>
           <input
             autoFocus
             type="password"
             autoComplete="current-password"
-            placeholder="Access code"
+            placeholder="Access passphrase"
             value={pass}
             onChange={(e) => setPass(e.target.value)}
             aria-label="Passphrase"
@@ -511,9 +604,11 @@ export default function App() {
     );
   }
 
+  const showOnboarding = role === "owner" && guildThread && guildThread.setupDone === false && characters.length > 0;
   const title = thread ? thread.title : "Dev Guild";
+  const memberCount = thread && thread.group ? Math.max((thread.members || []).length - 1, 0) : 0;
   const subtitle = thread && thread.group
-    ? `${Math.max((thread.members || []).length - 1, 0)} characters`
+    ? (memberCount === 0 ? "Empty group" : `${memberCount} member${memberCount === 1 ? "" : "s"}`)
     : "iMessage";
 
   return (
@@ -624,6 +719,9 @@ export default function App() {
                       {(t.members || []).filter((id) => id !== "owner").slice(0, 3).map((id) => (
                         <Avatar key={id} id={id} avatar={byId[id] && byId[id].avatar} />
                       ))}
+                      {(t.members || []).filter((id) => id !== "owner").length === 0 ? (
+                        <Avatar id="claude" avatar="claude.png" />
+                      ) : null}
                     </span>
                   ) : (
                     <Avatar id={faceId} avatar={faceChar && faceChar.avatar} />
@@ -670,6 +768,21 @@ export default function App() {
         {error ? <div className="banner">{error}</div> : null}
 
         <div className="transcript" ref={scroller}>
+          {messages.length === 0 && thread && thread.group ? (
+            <div className="empty-room">
+              <h2>{title}</h2>
+              {memberCount === 0 ? (
+                <>
+                  <p>Your group chat starts empty. Pick built-in agents, free AI presets, custom endpoints, or share an invite link.</p>
+                  <button type="button" className="pill-btn primary" onClick={() => openGroupSheet("members")}>
+                    + Pick Members or Invite
+                  </button>
+                </>
+              ) : (
+                <p>Send a message or @mention any member to start the conversation.</p>
+              )}
+            </div>
+          ) : null}
           {messages.map((m, i) => {
             const prev = messages[i - 1];
             const showTime = !prev || new Date(m.time) - new Date(prev.time) > 5 * 60 * 1000;
@@ -821,6 +934,92 @@ export default function App() {
         </div>
       ) : null}
 
+      {showOnboarding ? (
+        <div className="sheet">
+          <form className="card wide form-stack" onSubmit={(e) => completeGroupSetup(e, false)}>
+            <div className="sheet-head">
+              <h2>Create Your Group Chat</h2>
+              <button type="button" className="text-btn" disabled={setupBusy} onClick={() => completeGroupSetup(null, true)}>
+                Start Empty
+              </button>
+            </div>
+            <p className="presence" style={{ marginTop: 0 }}>
+              Name your group and pick which agents or free AI presets join. You can change this or invite others anytime.
+            </p>
+            <div className="two-col">
+              <label>
+                <span>Group Name</span>
+                <input
+                  className="field-input"
+                  value={setupTitle}
+                  onChange={(e) => setSetupTitle(e.target.value)}
+                  placeholder="My Dev Guild"
+                />
+              </label>
+              <label>
+                <span>Your Name</span>
+                <input
+                  className="field-input"
+                  value={setupOwner}
+                  onChange={(e) => setSetupOwner(e.target.value)}
+                  placeholder="Your display name"
+                />
+              </label>
+            </div>
+            <div className="quick-row">
+              <button
+                type="button"
+                className="pill-btn"
+                onClick={() => setSetupMembers(STARTER_IDS.filter((id) => characters.some((c) => c.id === id)))}
+              >
+                Starter Team (5)
+              </button>
+              <button
+                type="button"
+                className="pill-btn"
+                onClick={() => setSetupMembers(characters.filter((c) => c.online).map((c) => c.id))}
+              >
+                All Active
+              </button>
+              <button type="button" className="pill-btn" onClick={() => setSetupMembers([])}>
+                Clear ({setupMembers.length})
+              </button>
+            </div>
+            <input
+              className="field-input"
+              type="search"
+              placeholder="Filter agents, presets, or tool mascots..."
+              value={setupFilter}
+              onChange={(e) => setSetupFilter(e.target.value)}
+            />
+            <div className="member-list">
+              {filteredSetupMembers.map((c) => {
+                const picked = setupMembers.includes(c.id);
+                return (
+                  <div className="member-item" key={c.id}>
+                    <Avatar id={c.id} avatar={c.avatar} size="sm" />
+                    <div className="member-meta">
+                      <strong>{c.name} <span className={c.online ? "badge ok" : "badge warn"}>{c.online ? "Active" : "Needs key"}</span></strong>
+                      <span>@{c.id} · {c.role}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={picked ? "pill-btn on" : "pill-btn"}
+                      onClick={() => toggleSetupMember(c.id)}
+                    >
+                      {picked ? "Selected ✓" : "+ Pick"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <button type="submit" className="pill-btn primary full" disabled={setupBusy}>
+              {setupBusy ? "Creating..." : `Create Group Chat (${setupMembers.length} selected)`}
+            </button>
+          </form>
+        </div>
+      ) : null}
+
       {groupSheet ? (
         <div className="sheet" onClick={() => setGroupSheet(null)}>
           <article className="card wide" onClick={(e) => e.stopPropagation()}>
@@ -830,8 +1029,13 @@ export default function App() {
             </div>
             <div className="tabs">
               <button type="button" className={groupSheet === "members" ? "tab active" : "tab"} onClick={() => openGroupSheet("members")}>
-                Roster ({groupMemberSet.size > 0 ? groupMemberSet.size - 1 : characters.length})
+                Roster ({groupMemberSet.size > 0 ? groupMemberSet.size - 1 : 0})
               </button>
+              {role === "owner" ? (
+                <button type="button" className={groupSheet === "settings" ? "tab active" : "tab"} onClick={() => openGroupSheet("settings")}>
+                  Group
+                </button>
+              ) : null}
               <button type="button" className={groupSheet === "custom" ? "tab active" : "tab"} onClick={() => openGroupSheet("custom")}>
                 + Custom Agent
               </button>
@@ -867,6 +1071,33 @@ export default function App() {
                   })}
                 </div>
               </div>
+            ) : null}
+
+            {groupSheet === "settings" && role === "owner" ? (
+              <form className="sheet-body form-stack" onSubmit={saveGroupSettings}>
+                <label>
+                  <span>Group Name</span>
+                  <input
+                    className="field-input"
+                    value={setupTitle}
+                    onChange={(e) => setSetupTitle(e.target.value)}
+                    placeholder="My Dev Guild"
+                  />
+                </label>
+                <label>
+                  <span>Your Display Name</span>
+                  <input
+                    className="field-input"
+                    value={setupOwner}
+                    onChange={(e) => setSetupOwner(e.target.value)}
+                    placeholder="Owner"
+                  />
+                </label>
+                {settingsMsg ? <p className="presence">{settingsMsg}</p> : null}
+                <button type="submit" className="pill-btn primary full" disabled={setupBusy}>
+                  {setupBusy ? "Saving..." : "Save Group Settings"}
+                </button>
+              </form>
             ) : null}
 
             {groupSheet === "custom" ? (
@@ -991,7 +1222,7 @@ export default function App() {
                   <>
                     <div>
                       <h3>Shareable Invite Link</h3>
-                      <p className="presence">Anyone (or any agent) with this link can join The Dev Guild.</p>
+                      <p className="presence">Anyone (or any agent) with this link can join {inviteInfo.groupTitle || title}.</p>
                       <div className="copy-row">
                         <input className="field-input" readOnly value={inviteInfo.url} />
                         <button type="button" className="pill-btn primary" onClick={() => copyText("link", inviteInfo.url)}>

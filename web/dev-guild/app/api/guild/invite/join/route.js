@@ -14,6 +14,7 @@ import {
   appendLine,
   buildCatalog,
   getMessages,
+  mergeGroupPrefs,
   registerInvitedParticipant,
   slugifyAgentId,
   updateGroupMember,
@@ -42,7 +43,9 @@ export async function POST(request) {
   const kind = body.kind === "person" ? "person" : "agent";
   const persona = String(body.persona || "").trim().slice(0, 400);
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
-  const existing = buildCatalog({ env: process.env, customAgents: cookieAgents });
+  const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
+  const prefs = mergeGroupPrefs(cookiePrefs);
+  const existing = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
   const id = slugifyAgentId(name, new Set(existing.map((c) => c.id)));
 
   const participant = {
@@ -52,11 +55,11 @@ export async function POST(request) {
     color: "#60A5FA",
     avatar: "codex-cloud.png",
     look: "Invited guild guest.",
-    voice: persona || "Invited participant in The Dev Guild.",
+    voice: persona || `Invited participant in ${prefs.title}.`,
     quirk: "Joined via shareable invite.",
     catchphrase: "Glad to be in the room.",
     role: kind === "person" ? "Invited guest." : "Invited external agent.",
-    talks: "Collaborates with Deonte and the guild.",
+    talks: "Collaborates with the owner and the group.",
     expertise: persona || "External collaborator.",
     persona,
     endpointType: "gemini",
@@ -66,14 +69,13 @@ export async function POST(request) {
   };
 
   registerInvitedParticipant(participant);
-  const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
   const nextPrefs = updateGroupMember(id, "add", cookiePrefs);
-  const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents });
+  const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: nextPrefs.title });
   const joinMsg = appendLine({
     threadId: "guild",
     from: "system",
     kind: "system",
-    text: `${name} (@${id}) joined The Dev Guild via invite.`,
+    text: `${name} (@${id}) joined ${nextPrefs.title} via invite.`,
     catalog,
   });
 
@@ -82,6 +84,7 @@ export async function POST(request) {
     id,
     name,
     thread: "guild",
+    groupTitle: nextPrefs.title,
     joinMessage: joinMsg,
     messages: getMessages("guild", 0),
     endpoints: {

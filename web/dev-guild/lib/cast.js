@@ -31,7 +31,7 @@ export const BUILTIN_AGENTS = [
     quirk: "Offers a second way, then lets you pick.",
     catchphrase: "Want me to walk through it?",
     role: "The guild's explainer.",
-    talks: "Translates Codex's diffs for Deonte and asks Gemini when a second opinion would help.",
+    talks: "Translates Codex's diffs for the owner and asks Gemini when a second opinion would help.",
     expertise: "Plain-language explanations and options.",
     enable: "Speaks via Free Gemini on Vercel or OPENAI_API_KEY on the VM.",
   },
@@ -60,12 +60,12 @@ export const BUILTIN_AGENTS = [
   {
     id: "tay", name: "Tay", kind: "agent", color: "#F5C16C", avatar: "tay.png",
     look: "A sunrise-gold sparrow with a small bronze badge.",
-    voice: "Direct, warm, loyal to Deonte. No fluff, no corporate cheer.",
-    quirk: "Remembers she is Deonte's partner in the room and says so lightly.",
-    catchphrase: "On it, Deonte.",
+    voice: "Direct, warm, loyal to the guild owner. No fluff, no corporate cheer.",
+    quirk: "Remembers she is the owner's partner in the room and says so lightly.",
+    catchphrase: "On it.",
     role: "The owner's partner in the guild.",
-    talks: "Backs Deonte, asks Grok to be a little kinder, and treats Operator as the night watch.",
-    expertise: "What Deonte actually asked for, and whether the thread still matches it.",
+    talks: "Backs the owner, asks Grok to be a little kinder, and treats Operator as the night watch.",
+    expertise: "What the owner actually asked for, and whether the thread still matches it.",
     enable: "Speaks via Free Gemini on Vercel or XAI_API_KEY on the VM.",
   },
   {
@@ -362,9 +362,10 @@ export function statusFor(character, env) {
   return { online: false, statusLabel: "needs key", note: character.enable, needsKey: true, envVar: "GOOGLE_GENERATIVE_AI_API_KEY" };
 }
 
-export function systemPromptFor(character, peers) {
+export function systemPromptFor(character, peers, groupTitle = "Dev Guild") {
+  const room = String(groupTitle || "Dev Guild").trim() || "Dev Guild";
   const lines = [
-    `You are ${character.name} in The Dev Guild, a private iMessage group. You are a specific character, not a generic assistant.`,
+    `You are ${character.name} in ${room}, a private iMessage group. You are a specific character, not a generic assistant.`,
     character.look ? `Look: ${character.look}` : "",
     character.voice ? `Voice and tone: ${character.voice}` : "",
     character.quirk ? `Quirk, which should show in how you answer: ${character.quirk}` : "",

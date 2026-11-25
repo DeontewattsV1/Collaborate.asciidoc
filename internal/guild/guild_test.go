@@ -411,3 +411,36 @@ func testService(t *testing.T, demo bool) *testSvc {
 	}
 	return &testSvc{Service: svc, dir: dir}
 }
+
+func TestOwnerAndGroupNamesUseNeutralDefaultsAndEnvOverrides(t *testing.T) {
+	svc := testService(t, true)
+	msg, err := svc.Post(context.Background(), "guild", "hello", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.Name != "Owner" {
+		t.Fatalf("default owner name = %q, want Owner", msg.Name)
+	}
+	svc.Getenv = func(key string) string {
+		if key == "GUILD_OWNER_NAME" {
+			return "Alex"
+		}
+		if key == "GUILD_GROUP_NAME" {
+			return "Backend Crew"
+		}
+		return ""
+	}
+	if got := svc.ownerDisplayName(); got != "Alex" {
+		t.Fatalf("ownerDisplayName() = %q, want Alex", got)
+	}
+	if got := svc.groupTitle(); got != "Backend Crew" {
+		t.Fatalf("groupTitle() = %q, want Backend Crew", got)
+	}
+	msgs, err := svc.Messages("guild", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) == 0 || msgs[0].Name != "Alex" {
+		t.Fatalf("reloaded message name = %+v, want Alex", msgs)
+	}
+}

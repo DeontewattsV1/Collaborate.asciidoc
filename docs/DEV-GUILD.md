@@ -1,38 +1,62 @@
 # Dev Guild
 
-Dev Guild is a private iMessage-style chat. Deonte texts chibi characters. The characters can answer each other. Every line, human and character, is appended to an `agentterm` log and can be checked with `agentterm verify`.
+Dev Guild is a free, self-hostable iMessage-style multi-agent group chat (`web/dev-guild`). Deploy your own instance on Vercel Hobby in one click, name your group, pick which AI agents or tool mascots join your room, add custom agents, and invite people or external agents with a link.
 
-The phone app is a Next.js client meant for Vercel Hobby. The bridge is a small Go process on the Oracle VM. Model keys stay in that process. The browser only holds an httpOnly session cookie.
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc&root-directory=web%2Fdev-guild&env=GOOGLE_GENERATIVE_AI_API_KEY,GUILD_OWNER_TOKEN&envDescription=Free%20Gemini%20API%20key%20from%20Google%20AI%20Studio%20and%20your%20private%20group%20chat%20passphrase.&envLink=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc%2Fblob%2Fmain%2Fdocs%2FDEV-GUILD.md&project-name=dev-guild&repository-name=dev-guild)
+
+You can run Dev Guild completely **standalone on Vercel** (no VM needed), or optionally connect it to the Go bridge (`cmd/guild`) so every line is written to an `agentterm` hash-chained, signed log (`agentterm verify`).
 
 This is still the prototype described in [`SECURITY.md`](SECURITY.md). A passphrase is not a production identity system.
 
-## Characters
+## Quickstart (Free, No VM Required)
 
-The cast is `internal/guild`. Agents (Claude, Codex, ChatGPT, Gemini, Grok, Tay, Manus, Cursor, Copilot, Operator, Ollama) are separate from the tool mascots on The Dev Guild sheets. Codex the knight is not Codex Cloud the bot. Ollama uses the llama from sheet IV.
+1. **Get a free Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey) (free tier; no credit card required).
+2. **Click Deploy with Vercel** above. The button sets:
+   - **Root Directory:** `web/dev-guild`
+   - **`GOOGLE_GENERATIVE_AI_API_KEY`:** your Google AI Studio free Gemini key (stored server-side only; never sent to the browser)
+   - **`GUILD_OWNER_TOKEN`:** a private passphrase you choose to protect your chat and invite links
+3. **Open your deployed URL**, enter your `GUILD_OWNER_TOKEN` passphrase, and complete the first-run setup:
+   - Your new deployment starts with an **empty group** and no baked-in personal data.
+   - Give your group chat a name, set your display name, and pick which built-in agents, free AI presets, or tool mascots to add (or start empty and add later).
+4. **Add to Home Screen** on iPhone Safari (or use desktop) for the full-screen iMessage experience.
 
-Each character has a look, voice, quirk, catchphrase, role, and a note on how they speak to the others. That text is the system prompt for a live model, and it is what demo voice says back when no model is called. The profile sheet in the app shows the same words.
+## Optional Environment Variables
 
-A character is online only when the key it needs is in the server environment. The others show how to turn them on. Operator is always on and does not call a provider. Tool mascots speak through whichever of Anthropic, OpenAI, Gemini, or xAI is configured, still in that mascot's voice.
+All environment variables are server-side only (never exposed to the browser):
 
-| Character | Environment variable |
-|---|---|
-| Claude | `ANTHROPIC_API_KEY` (GitHub Environment `agent-anthropic`, secret `MODEL_API_KEY`) |
-| Codex, ChatGPT | `OPENAI_API_KEY` (`agent-openai`) |
-| Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` (`agent-gemini`) |
-| Grok, Tay | `XAI_API_KEY` (`agent-xai`). Tay has her own prompt. Optional `TAY_MODEL`. |
-| Ollama | `OLLAMA_HOST=http://127.0.0.1:11434` |
-| Manus, Cursor, Copilot | An OpenAI-compatible base URL plus that product's key. There is no free public chat endpoint wired in. |
-| Tool mascots | Any one of the four model keys above |
+| Variable | Required | Purpose |
+|---|---|---|
+| `GUILD_OWNER_TOKEN` | Yes | Private passphrase to sign in and generate invite codes (`GUILD_ACCESS_CODE` is accepted as an alias) |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Recommended | Free Gemini API key from Google AI Studio (`@ai-sdk/google`) |
+| `GUILD_OWNER_NAME` | No | Default display name for the group owner (default: `Owner`, editable in UI) |
+| `GUILD_GROUP_NAME` | No | Default group chat name (default: `Dev Guild`, editable in UI) |
+| `GROQ_API_KEY` | No | Free fallback & Groq Llama 3.1 preset (`llama-3.1-8b-instant`) |
+| `OPENROUTER_API_KEY` | No | Free fallback & OpenRouter presets (strictly restricted to `:free` model ids) |
+| `HF_TOKEN` | No | Activates the Hugging Face Inference Router free preset |
+| `OLLAMA_HOST` | No | Activates the Ollama endpoint preset (e.g. `https://...` tunnel to your Ollama host) |
+| `GUILD_BACKEND_URL` | No | Optional `https://` tunnel URL to a `guild serve` VM bridge for `agentterm` signed logging |
+| `GUILD_DEMO` | No | Set to `1` when no API key is configured to stream scripted in-character demo replies |
 
-Optional model names match `scripts/setup_github_environments.sh`: `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL`, `XAI_MODEL`.
+## Characters, Contacts, Custom Agents & Invites
 
-## Free Gemini
+The built-in cast (`web/dev-guild/lib/cast.js`, aligned with `internal/guild/character.go`) includes:
 
-The Next.js server calls the free Google Gemini API through `@ai-sdk/google`. `google()` reads `GOOGLE_GENERATIVE_AI_API_KEY` on the server. The browser never receives it. `.env.example` lists the name. `.env.local` is gitignored. Do not commit a key, and do not print it in logs.
+- **11 Guild Agents:** Claude, Codex, ChatGPT, Gemini, Grok, Tay, Manus, Cursor, Copilot, Operator, and Ollama.
+- **43 Tool Mascots:** Docker, Git, Python, Rust, PostgreSQL, Codex Cloud, GitHub, Kubernetes, Redis, Terraform, React, Nginx, Go, Linux, Firefox, MongoDB, and more.
+- **8 Free Public AI Presets:** Gemini 3.5 Flash Lite, Gemini 4 Hydrogen, Gemma 4 31B, Groq Llama 3.1 8B, OpenRouter Gemma 3 12B (`:free`), OpenRouter Llama 3.2 3B (`:free`), Hugging Face Free, and Ollama Endpoint. Presets requiring an unset key show `Needs key` in Contacts instead of being hidden.
 
-The same value is a repository Actions secret named `GOOGLE_GENERATIVE_AI_API_KEY`. Set it on the Vercel project as well (Production and Preview, server-side only): Project → Settings → Environment Variables → `GOOGLE_GENERATIVE_AI_API_KEY`. The Vercel app cannot see the Actions secret by itself.
+Inside the app, tap **+ Add / Invite** (or **Contacts**):
 
-The default model is `gemini-3.5-flash-lite`. `gemini-2.5-flash-lite` routes to that model on 1 December 2026. Every model below is listed as free on the [Gemini API pricing page](https://ai.google.dev/gemini-api/docs/pricing).
+- **Roster:** Add or remove any built-in agent, preset, or tool mascot from your group chat.
+- **Group:** Rename your group chat or change your display name anytime.
+- **+ Custom Agent:** Add your own agent using Free Gemini or any OpenAI-compatible endpoint (`baseUrl`, `modelId`, `apiKey` — encrypted server-side in an AES-256-GCM httpOnly cookie and never leaked to the client catalog).
+- **Invite Link:** Generate an owner-signed invite link (`/?invite=inv_...`) for friends or external AI agents, or call `/api/guild/invite/join` and `/api/guild/invite/message` directly via HTTP.
+
+Each character has a look, voice, quirk, catchphrase, role, and a note on how they speak to the others. That text is the system prompt for a live model, and it is what demo voice says back when no model is called.
+
+## Free Gemini Routing & Features
+
+The Next.js server calls the free Google Gemini API through `@ai-sdk/google`. Every model below is listed as free on the [Gemini API pricing page](https://ai.google.dev/gemini-api/docs/pricing):
 
 | Voice | Who | Model |
 |---|---|---|
@@ -40,51 +64,50 @@ The default model is `gemini-3.5-flash-lite`. `gemini-2.5-flash-lite` routes to 
 | Quick | Grok, Tay, Cursor, Copilot, Operator | `gemini-3.5-flash-lite` |
 | Distinct | ChatGPT, Ollama, and the tool mascots | `gemma-4-31b-it` |
 
-A character's system prompt is still the personality from the registry (voice, quirk, catchphrase, how they talk to the others).
+On HTTP 429 or `RESOURCE_EXHAUSTED`, the server tries the next free Gemini model, then stops the Gemini chain on any other error and falls back to:
 
-On HTTP 429 or `RESOURCE_EXHAUSTED`, the server tries the next free Gemini model, then stops the Gemini chain on any other error. After Gemini:
-
-1. `GROQ_API_KEY`, when set, calls `@ai-sdk/groq` with `llama-3.1-8b-instant`.
-2. `OPENROUTER_API_KEY`, when set, calls OpenRouter through `@ai-sdk/openai` and only model ids that end in `:free`.
-3. The VM providers in the table above (`MODEL_API_KEY` in the GitHub Environments, exported on the VM as `ANTHROPIC_API_KEY` and the others).
-
-`guild chat` on the VM uses those VM keys directly. The lines still land in the same signed log. Tests pass mock runners and do not call a provider.
+1. `GROQ_API_KEY`, when set, via `@ai-sdk/groq` (`llama-3.1-8b-instant`).
+2. `OPENROUTER_API_KEY`, when set, via `@ai-sdk/openai` using only `:free` model ids.
+3. Optional VM providers (`GUILD_BACKEND_URL`), when connected to `guild serve`.
 
 ### What the chat can do
 
-The phone streams replies into the bubble (`streamText`) and shows a typing indicator until the first token.
+- **Streaming & Thinking:** Replies stream live into the bubble (`streamText`) with a typing indicator. Gemini models include a collapsible Thinking summary; the raw thought trace is never stored or sent to the browser. Gemma requests omit `thinkingConfig`.
+- **Tools:** `lookup_log` reads recent lines in the thread, `handoff` writes a task card (`open`, `handed-off`, or `done`) and @mentions the assignee, and `read_repo_file` (when connected to the VM bridge) reads non-secret files inside the checkout.
+- **Attachments & Search:** Images and PDFs attach from the composer as `input_image` / `input_file`. Search returns recent matching lines without calling a paid reranker.
+- **Loop & Cost Caps:** One human message triggers at most 3 character replies (`MAX_TURNS = 3`) and each character speaks at most once per round so `@mentions` cannot loop.
+- **Live Smoke Test:** `.github/workflows/guild-gemini-smoke.yml` runs on `workflow_dispatch` using repository secret `GOOGLE_GENERATIVE_AI_API_KEY`.
 
-Gemini thinking uses `providerOptions.google.thinkingConfig`. Claude asks for `thinkingLevel: high` with `includeThoughts: true`. Grok uses `low`. Operator turns thoughts off. A short summary can appear in a collapsible Thinking row. The raw thought trace is not stored and not sent to the phone. Gemma requests omit `thinkingConfig`.
-
-Tools the model may call, each appended to the signed log as a `tool` line:
-
-- `read_repo_file` reads one path inside the VM checkout. `..`, `.env`, keys, and `.agentterm` are refused. The read runs in `guild serve` and is logged before the bytes return.
-- `lookup_log` reads recent signed lines for the thread.
-- `handoff` writes a task card (`task`, `assignee`, `status` of `open`, `handed-off`, or `done`) and @mentions that character.
-
-Images and PDFs attach from the composer. The model receives them as `input_image` or `input_file`. The log stores the file name only.
-
-Search in the thread returns the newest lines whose text contains the query.
-
-`GUILD_DEMO=1` with no free key set streams a scripted in-character reply, a Thinking summary, a tool line, and a task card, and does not call a provider. That is what the screenshots show.
-
-A live smoke test is `.github/workflows/guild-gemini-smoke.yml`. It runs only on `workflow_dispatch`, reads the Actions secret, and fails when the reply text is empty. It prints `non-empty: yes` and a length. It does not print the key. GitHub lists that workflow after the file is on `main`. Until then, dispatch `independent-ci` on this branch with the `gemini_smoke` input. That job is skipped on pull requests, so a free-tier 429 cannot fail the required `go-verify` check.
-
-## What gets logged
-
-`guild serve` writes `.agentterm/guild.jsonl`. Each line is an `agentterm` entry of kind `chat`, hash-chained and signed by `guild.key`. Model replies go through `adapter.Broker.Say`, the same broker method `collaborate adapter run` uses, and that `Say` writes the log. The chat broker refuses path claims and file writes.
+## Local Development
 
 ```bash
-agentterm verify --file .agentterm/guild.jsonl --server-key "$(guild pubkey)"
-guild tail
-GUILD_OWNER_TOKEN=... guild chat          # or the collab-chat alias
+cd web/dev-guild
+cp .env.example .env.local
+# Add GUILD_OWNER_TOKEN and GOOGLE_GENERATIVE_AI_API_KEY to .env.local
+npm install
+npm test
+npm run dev
 ```
 
-One human message can cause at most 3 character replies (the turn cap) and about 8000 estimated tokens (the cost cap). A character speaks once per round, so two characters @mentioning each other cannot loop. `GUILD_DEMO=1` answers in character and does not call a provider.
+Open `http://localhost:3000`.
 
-## VM setup
+## Optional VM Bridge & Signed Log (`cmd/guild`)
 
-On the `sandbox` user, from a current checkout:
+If you also want every message hash-chained and signed into an `agentterm` log (and/or VM-hosted per-provider keys like `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, or local `OLLAMA_HOST`), run the Go bridge on a Linux host or Oracle Always Free VM:
+
+| Character | VM Environment variable |
+|---|---|
+| Claude | `ANTHROPIC_API_KEY` (GitHub Environment `agent-anthropic`, secret `MODEL_API_KEY`) |
+| Codex, ChatGPT | `OPENAI_API_KEY` (`agent-openai`) |
+| Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` (`agent-gemini`) |
+| Grok, Tay | `XAI_API_KEY` (`agent-xai`). Optional `TAY_MODEL`. |
+| Ollama | `OLLAMA_HOST=http://127.0.0.1:11434` |
+| Manus, Cursor, Copilot | OpenAI-compatible `*_API_KEY` + `*_BASE_URL` |
+| Tool mascots | Any one of the four model keys above |
+
+Optional model names match `scripts/setup_github_environments.sh`: `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL`, `XAI_MODEL`.
+
+### Start the VM bridge
 
 ```bash
 export GUILD_OWNER_TOKEN='a long passphrase you keep'
@@ -92,46 +115,27 @@ export ANTHROPIC_API_KEY='...'    # only the keys you have
 bash scripts/setup-guild.sh
 ```
 
-The script builds `guild`, prints who is online, and starts `guild serve` in tmux session `dev-guild` on `127.0.0.1:8790`. It does not write secrets into the repo. GitHub can show `MODEL_NAME` for the four `agent-*` environments. It cannot show the API key back. Paste keys into the VM environment yourself.
-
-Replies are asynchronous, so the Vercel function returns before the model finishes. The phone polls.
-
-## Reach the VM without opening a port
-
-The VM should keep only TCP 22 open. The bridge listens on loopback. Pick one free outbound tunnel:
-
-**Cloudflare Tunnel (recommended).** `cloudflared` is a single static binary and stays small on a 1 GB VM.
+`guild serve` writes `.agentterm/guild.jsonl` signed by `guild.key` on loopback `127.0.0.1:8790`:
 
 ```bash
-curl -fsSL -o /tmp/cloudflared.tgz https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.tgz
-mkdir -p "$HOME/.local/bin" && tar -C "$HOME/.local/bin" -xzf /tmp/cloudflared.tgz
-cloudflared tunnel --url http://127.0.0.1:8790
+agentterm verify --file .agentterm/guild.jsonl --server-key "$(guild pubkey)"
+guild tail
+GUILD_OWNER_TOKEN=... guild chat          # or the collab-chat alias
 ```
 
-A quick tunnel prints an `https://*.trycloudflare.com` URL. A named tunnel (free Cloudflare account) keeps a stable hostname. Point the tunnel at loopback only.
+### Reach the VM without opening a port
 
-**Tailscale Funnel** is the other free option if the VM is already on a tailnet. `tailscale funnel 8790` publishes the loopback port with Tailscale's TLS. SSH can stay on port 22 or move to Tailscale.
+Keep only TCP 22 open on the VM and expose `127.0.0.1:8790` with a free outbound tunnel:
 
-**Secure ShellFish** still reaches the same log over SSH: port-forward `8790`, or skip the web app and run `collab-chat` / `guild tail` in the terminal. Do not open 8790 in the Oracle security list.
+- **Cloudflare Tunnel (recommended):** `cloudflared tunnel --url http://127.0.0.1:8790`
+- **Tailscale Funnel:** `tailscale funnel 8790`
+- **Secure ShellFish:** SSH port-forward `8790`, or run `guild chat` / `guild tail` in the terminal.
 
-## Vercel Hobby
-
-Import the repo. Set the project root to `web/dev-guild`. Production environment variables, server-side only:
-
-| Name | Value |
-|---|---|
-| `GUILD_OWNER_TOKEN` | Same passphrase as the VM |
-| `GUILD_BACKEND_URL` | The `https://` tunnel or Funnel URL, no path |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | The free Gemini key. Same value as the Actions secret. Server-side only |
-| `GROQ_API_KEY` | Optional. Used only when Gemini is exhausted |
-| `OPENROUTER_API_KEY` | Optional. Used only with `:free` model ids |
-
-The VM's per-provider keys stay on the VM. Add to Home Screen on iPhone Safari for the standalone app. The first screen asks for the passphrase and stores only an httpOnly cookie.
+Then set `GUILD_BACKEND_URL` in your Vercel project environment variables to the tunnel's `https://` URL (no trailing path) and match `GUILD_OWNER_TOKEN` to the VM's passphrase.
 
 ## Deferred
 
 - A named Cloudflare tunnel is documented, not installed for you. It needs a Cloudflare login.
-- Manus, Cursor, and Copilot stay offline until you supply an OpenAI-compatible base URL.
-- The network `collaborate serve` ledger is not given a second copy of each line. The signed `agentterm` log is the record, written through `Broker.Say`.
+- Manus, Cursor, and Copilot VM providers stay offline until you supply an OpenAI-compatible base URL (on Vercel standalone, they speak via Free Gemini or fallbacks).
 - No push notifications, typing presence across devices, or read-receipt entries of their own. Read is computed when a character has replied.
 - Tool mascots share a house model key. They do not each have a vendor account.

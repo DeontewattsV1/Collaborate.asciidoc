@@ -5,6 +5,16 @@ export function getOwnerToken(env) {
   return String(source.GUILD_OWNER_TOKEN || source.GUILD_ACCESS_CODE || "").trim();
 }
 
+export function getOwnerName(env) {
+  const source = env || process.env;
+  return String(source.GUILD_OWNER_NAME || "").trim().slice(0, 40) || "Owner";
+}
+
+export function getGroupName(env) {
+  const source = env || process.env;
+  return String(source.GUILD_GROUP_NAME || "").trim().slice(0, 60) || "Dev Guild";
+}
+
 function safeEqual(aStr, bStr) {
   const a = Buffer.from(String(aStr || ""));
   const b = Buffer.from(String(bStr || ""));
@@ -98,22 +108,34 @@ export function decryptCustomAgents(raw, token) {
 }
 
 export function sealGroupPrefs(prefs, token) {
-  return signPayload(prefs || { added: [], removed: [] }, "dev-guild-group-prefs", token);
+  const clean = {
+    title: String((prefs && prefs.title) || "").trim().slice(0, 60),
+    ownerName: String((prefs && prefs.ownerName) || "").trim().slice(0, 40),
+    setupDone: Boolean(prefs && prefs.setupDone),
+    added: Array.isArray(prefs && prefs.added) ? prefs.added.map((id) => String(id)).slice(0, 128) : [],
+    removed: Array.isArray(prefs && prefs.removed) ? prefs.removed.map((id) => String(id)).slice(0, 128) : [],
+  };
+  return signPayload(clean, "dev-guild-group-prefs", token);
 }
 
 export function readGroupPrefs(raw, token) {
   const data = verifyPayload(raw, "dev-guild-group-prefs", token);
-  if (!data || typeof data !== "object") return { added: [], removed: [] };
+  if (!data || typeof data !== "object") {
+    return { title: "", ownerName: "", setupDone: false, added: [], removed: [] };
+  }
   return {
-    added: Array.isArray(data.added) ? data.added : [],
-    removed: Array.isArray(data.removed) ? data.removed : [],
+    title: String(data.title || "").trim().slice(0, 60),
+    ownerName: String(data.ownerName || "").trim().slice(0, 40),
+    setupDone: Boolean(data.setupDone),
+    added: Array.isArray(data.added) ? data.added.map((id) => String(id)) : [],
+    removed: Array.isArray(data.removed) ? data.removed.map((id) => String(id)) : [],
   };
 }
 
-export function checkGuildAuth({ jar, token, inviteParam, authHeader }) {
+export function checkGuildAuth({ jar, token, inviteParam, authHeader, env }) {
   if (!token) return { ok: false, status: 503, error: "The server has no access passphrase configured." };
   if (isOwnerCookie(jar?.get("guild_session")?.value || "", token)) {
-    return { ok: true, role: "owner", participant: { id: "owner", name: "Deonte" } };
+    return { ok: true, role: "owner", participant: { id: "owner", name: getOwnerName(env) } };
   }
   const inviteCookie = readInviteSession(jar?.get("guild_invite")?.value || "", token);
   if (inviteCookie) {

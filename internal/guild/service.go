@@ -22,9 +22,10 @@ import (
 )
 
 const (
-	ownerID     = "owner"
-	ownerName   = "Deonte"
-	guildThread = "guild"
+	ownerID           = "owner"
+	defaultOwnerName  = "Owner"
+	defaultGroupTitle = "Dev Guild"
+	guildThread       = "guild"
 )
 
 var mentionRE = regexp.MustCompile(`@([a-z0-9-]{2,32})`)
@@ -78,6 +79,20 @@ func (s *Service) PublicKey() string {
 	return hex.EncodeToString(s.Term.PublicKey())
 }
 
+func (s *Service) ownerDisplayName() string {
+	if v := strings.TrimSpace(s.getenv("GUILD_OWNER_NAME")); v != "" {
+		return v
+	}
+	return defaultOwnerName
+}
+
+func (s *Service) groupTitle() string {
+	if v := strings.TrimSpace(s.getenv("GUILD_GROUP_NAME")); v != "" {
+		return v
+	}
+	return defaultGroupTitle
+}
+
 func (s *Service) ensureGuild() error {
 	if _, ok := s.thread(guildThread); ok {
 		return nil
@@ -87,7 +102,7 @@ func (s *Service) ensureGuild() error {
 		members = append(members, c.ID)
 	}
 	_, err := s.append(agentterm.ChatBody{
-		Thread: guildThread, ID: "thread-guild", Kind: "thread", Title: "The Dev Guild", Members: members,
+		Thread: guildThread, ID: "thread-guild", Kind: "thread", Title: s.groupTitle(), Members: members,
 	})
 	return err
 }
@@ -238,7 +253,7 @@ func (s *Service) Characters() []CharacterView {
 
 func (s *Service) view(id string) CharacterView {
 	if id == ownerID {
-		return CharacterView{Character: Character{ID: ownerID, Name: ownerName, Kind: "owner", Color: "#0A84FF"}, Online: true, Note: "You"}
+		return CharacterView{Character: Character{ID: ownerID, Name: s.ownerDisplayName(), Kind: "owner", Color: "#0A84FF"}, Online: true, Note: "You"}
 	}
 	c, ok := s.Reg.Get(id)
 	if !ok {
@@ -401,13 +416,13 @@ func (s *Service) bubble(e agentterm.Entry, b agentterm.ChatBody) Message {
 	}
 }
 
-// Post records Deonte's message and, when sync is set, the replies.
+// Post records the owner's message and, when sync is set, the replies.
 // Async callers should invoke Respond afterwards.
 func (s *Service) Post(ctx context.Context, thread, text string, sync bool) (Message, error) {
 	return s.PostWithFiles(ctx, thread, text, nil, sync)
 }
 
-// PostWithFiles records Deonte's message. File names are logged; bytes are not.
+// PostWithFiles records the owner's message. File names are logged; bytes are not.
 func (s *Service) PostWithFiles(ctx context.Context, thread, text string, files []string, sync bool) (Message, error) {
 	text = strings.TrimSpace(text)
 	if text == "" && len(files) == 0 {
@@ -571,7 +586,7 @@ func (s *Service) prior(self string, history []agentterm.ChatBody) []adapter.Tur
 		}
 		name := b.From
 		if b.From == ownerID {
-			name = ownerName
+			name = s.ownerDisplayName()
 		} else if c, ok := s.Reg.Get(b.From); ok {
 			name = c.Name
 		}

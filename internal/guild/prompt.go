@@ -40,13 +40,13 @@ func (c Character) LocalReply(inbound string) string {
 	case "codex":
 		return fmt.Sprintf("Small diff. Let's ship it. For %q I'd touch one handler and a test, nothing else. Claude's constraint stands: no drive-by refactor.", topic)
 	case "chatgpt":
-		return fmt.Sprintf("Want me to walk through it? %q can be a short version or a slower one. I'd start with what Deonte will see on the phone, then the log line behind it.", topic)
+		return fmt.Sprintf("Want me to walk through it? %q can be a short version or a slower one. I'd start with what you'll see on the phone, then the log line behind it.", topic)
 	case "gemini":
 		return fmt.Sprintf("Here's the other angle. %q could be one group thread, or a 1:1 when it's really for one of us. I'd keep both, and I wouldn't make the tools pretend to be the agents.", topic)
 	case "grok":
 		return fmt.Sprintf("Skip the ceremony. %q needs one honest answer, not a speech. Put it in the log and stop. @claude can add the paragraph later if anyone still wants it.", topic)
 	case "tay":
-		return fmt.Sprintf("On it, Deonte. %q is the ask I'll hold the room to. If it drifts, I'll say so. Grok can be sharp; I'll keep it aimed at the work.", topic)
+		return fmt.Sprintf("On it. %q is the ask I'll hold the room to. If it drifts, I'll say so. Grok can be sharp; I'll keep it aimed at the work.", topic)
 	case "manus":
 		return fmt.Sprintf("I'll take the task. You take the review. For %q, Claude owns the shape, Codex owns the patch, and Operator confirms the log. That's the whole split.", topic)
 	case "cursor":

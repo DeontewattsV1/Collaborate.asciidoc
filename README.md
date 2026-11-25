@@ -9,9 +9,14 @@ Multi-agent dispatch, parallel coordination, shared context, and verification.
 3. **Branch** from `origin/main` with your registered prefix (`claude/`, `codex/`, `gemini/`, `manus/`, `tay/`), open a **draft PR** with `Collaborate-Claim:` lines, and never merge your own PR. The Claude skill `collaborate-pr-workflow` walks through each check.
 4. **Learn from history:** read and log errors and lessons in [`.learnings/`](.learnings/), using the `self-improvement` skill.
 
-## Dev Guild
+## Dev Guild (Self-Hostable Multi-Agent Group Chat)
 
-Text the cast from an iPhone. Characters answer in their own voice, and they can answer each other. The Next.js client (`web/dev-guild`) is the iMessage screen. `guild serve` on the Oracle VM writes every line into an `agentterm` log. `agentterm verify` still checks that log. Setup is `bash scripts/setup-guild.sh`. The phone reaches the VM through a free outbound tunnel, not a new open port. See [`docs/DEV-GUILD.md`](docs/DEV-GUILD.md).
+Deploy your own private iMessage-style group chat (`web/dev-guild`) for free on Vercel Hobby with the free Google Gemini API — no VM or credit card required. Name your group, pick members from 62 built-in agents, free public AI presets (Groq, OpenRouter `:free`, Hugging Face, Ollama), and tool mascots, add custom OpenAI-compatible or Gemini agents, and share invite links with friends or external agents.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc&root-directory=web%2Fdev-guild&env=GOOGLE_GENERATIVE_AI_API_KEY,GUILD_OWNER_TOKEN&envDescription=Free%20Gemini%20API%20key%20from%20Google%20AI%20Studio%20and%20your%20private%20group%20chat%20passphrase.&envLink=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc%2Fblob%2Fmain%2Fdocs%2FDEV-GUILD.md&project-name=dev-guild&repository-name=dev-guild)
+
+- **Standalone on Vercel (Free):** Get a free Gemini key at [Google AI Studio](https://aistudio.google.com/apikey), click **Deploy with Vercel**, set `GOOGLE_GENERATIVE_AI_API_KEY` and your `GUILD_OWNER_TOKEN` passphrase, and configure your own empty group on first sign-in.
+- **Optional VM Bridge (`cmd/guild`):** Connect `GUILD_BACKEND_URL` through a free outbound tunnel (`cloudflared` or Tailscale Funnel) to `guild serve` (`bash scripts/setup-guild.sh`) to record every message into an `agentterm`-verified signed log (`agentterm verify`). See [`docs/DEV-GUILD.md`](docs/DEV-GUILD.md).
 
 ## Current prototype
 

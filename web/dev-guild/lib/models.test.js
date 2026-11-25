@@ -202,19 +202,72 @@ test("demo stream has a summary, a tool, and a card", () => {
 });
 import { BUILTIN_AGENTS, BUILTIN_CAST, BUILTIN_TOOLS, FREE_PRESETS, statusFor } from "./cast.js";
 import { planSpeakers } from "./models.js";
-import { checkGuildAuth, decryptCustomAgents, encryptCustomAgents, inviteCodeFor, isValidInviteCode } from "./auth.js";
-import { buildCatalog, listThreads } from "./store.js";
+import {
+  checkGuildAuth,
+  decryptCustomAgents,
+  encryptCustomAgents,
+  inviteCodeFor,
+  isValidInviteCode,
+  readGroupPrefs,
+  sealGroupPrefs,
+} from "./auth.js";
+import { buildCatalog, configureGroup, getMessages, listThreads, resetStoreForTest } from "./store.js";
 
-test("built-in cast includes all 11 agents, 43 tool mascots, and 8 free presets", () => {
+test("built-in cast includes all 11 agents, 43 tool mascots, and 8 free presets with no hardcoded owner", () => {
+  resetStoreForTest();
   assert.equal(BUILTIN_AGENTS.length, 11);
   assert.equal(BUILTIN_TOOLS.length, 43);
   assert.equal(FREE_PRESETS.length, 8);
   assert.equal(BUILTIN_CAST.length, 62);
-  const group = listThreads({ catalog: buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } }) }).find((t) => t.id === "guild");
-  assert.ok(group && group.group);
-  for (const c of BUILTIN_CAST) {
-    assert.ok(group.members.includes(c.id), `group missing ${c.id}`);
-  }
+  const catalog = buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } });
+  assert.equal(catalog.length, 62);
+  assert.equal(JSON.stringify(catalog).includes("Deonte"), false);
+});
+
+test("first-run deploy starts empty and supports custom group name and picked members", () => {
+  resetStoreForTest();
+  const catalog = buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } });
+  const initial = listThreads({ catalog, env: {} }).find((t) => t.id === "guild");
+  assert.ok(initial && initial.group);
+  assert.equal(initial.setupDone, false);
+  assert.equal(initial.title, "Dev Guild");
+  assert.equal(initial.ownerName, "Owner");
+  assert.deepEqual(initial.members, ["owner"]);
+  assert.equal(getMessages("guild", 0).length, 0);
+
+  const emptySpeakers = planSpeakers({
+    members: initial.members,
+    group: true,
+    text: "Hello anyone?",
+    known: new Set(catalog.map((c) => c.id)),
+    activeIds: new Set(catalog.filter((c) => c.online).map((c) => c.id)),
+  });
+  assert.deepEqual(emptySpeakers, []);
+
+  const prefs = configureGroup(
+    {
+      title: "Backend Crew",
+      ownerName: "Alex",
+      members: ["claude", "grok", "nonexistent"],
+      setupDone: true,
+      replaceMembers: true,
+    },
+    null,
+    catalog,
+    {},
+  );
+  const token = "passphrase-123";
+  const roundTrip = readGroupPrefs(sealGroupPrefs(prefs, token), token);
+  assert.equal(roundTrip.title, "Backend Crew");
+  assert.equal(roundTrip.ownerName, "Alex");
+  assert.equal(roundTrip.setupDone, true);
+  assert.deepEqual(roundTrip.added, ["claude", "grok"]);
+
+  const configured = listThreads({ catalog, cookiePrefs: roundTrip, env: {} }).find((t) => t.id === "guild");
+  assert.equal(configured.title, "Backend Crew");
+  assert.equal(configured.ownerName, "Alex");
+  assert.equal(configured.setupDone, true);
+  assert.deepEqual(configured.members, ["owner", "claude", "grok"]);
 });
 
 test("free presets activate only when their free key is set and show needs key otherwise", () => {

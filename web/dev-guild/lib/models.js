@@ -208,7 +208,7 @@ export function planSpeakers({ members, group, text, known, activeIds, priorityI
     if (chosen.length >= MAX_TURNS) break;
   }
   if (chosen.length) return chosen;
-  return known.has("operator") ? ["operator"] : [];
+  return known.has("operator") && (!memberSet || memberSet.has("operator")) ? ["operator"] : [];
 }
 
 async function thoughtOf(result) {

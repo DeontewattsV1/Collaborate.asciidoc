@@ -1,10 +1,22 @@
 import { generateText } from "ai";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { checkGuildAuth, decryptCustomAgents, getOwnerToken, isValidInviteCode } from "../../../../../lib/auth.js";
+import {
+  checkGuildAuth,
+  decryptCustomAgents,
+  getOwnerToken,
+  isValidInviteCode,
+  readGroupPrefs,
+} from "../../../../../lib/auth.js";
 import { completeWithProvider, MAX_TURNS, parseMentions, planSpeakers } from "../../../../../lib/models.js";
 import { languageModel } from "../../../../../lib/providers.js";
-import { appendLine, buildCatalog, getMessages } from "../../../../../lib/store.js";
+import {
+  appendLine,
+  buildCatalog,
+  getMessages,
+  mergeGroupPrefs,
+  resolveGroupMembers,
+} from "../../../../../lib/store.js";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +59,15 @@ export async function POST(request) {
   if (!text) return NextResponse.json({ error: "text is required" }, { status: 400 });
 
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
-  const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, includeSecrets: true });
+  const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
+  const prefs = mergeGroupPrefs(cookiePrefs);
+  const catalog = buildCatalog({
+    env: process.env,
+    customAgents: cookieAgents,
+    includeSecrets: true,
+    groupTitle: prefs.title,
+  });
+  const members = resolveGroupMembers({ catalog, cookiePrefs });
   const from = String(body.from || (auth.participant && auth.participant.id) || "guest").trim().slice(0, 40);
   const senderName = String(body.name || (auth.participant && auth.participant.name) || from).trim().slice(0, 40);
 
@@ -65,7 +85,7 @@ export async function POST(request) {
     const activeIds = new Set(catalog.filter((c) => c.online).map((c) => c.id));
     const byId = new Map(catalog.map((c) => [c.id, c]));
     const queue = planSpeakers({
-      members: catalog.map((c) => c.id),
+      members,
       group: true,
       text,
       known,

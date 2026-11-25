@@ -523,3 +523,26 @@ button { cursor: pointer; }
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+.empty-room {
+  margin: auto;
+  max-width: 360px;
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--muted);
+}
+.empty-room h2 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 20px;
+}
+.empty-room p {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.quick-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

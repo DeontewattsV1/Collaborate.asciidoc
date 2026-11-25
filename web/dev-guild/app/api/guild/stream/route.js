@@ -28,6 +28,7 @@ import {
   getMessages,
   hasVmBackend,
   listThreads,
+  mergeGroupPrefs,
   vmFetch,
 } from "../../../../lib/store.js";
 
@@ -152,22 +153,24 @@ export async function POST(request) {
 
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
   const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
+  const prefs = mergeGroupPrefs(cookiePrefs);
   const vmChars = await mirrorVm(token, "GET", "/v1/characters");
   const catalog = buildCatalog({
     env: process.env,
     customAgents: cookieAgents,
     vmCharacters: vmChars && vmChars.characters,
     includeSecrets: true,
+    groupTitle: prefs.title,
   });
   const threads = listThreads({ catalog, cookiePrefs });
   const thread = threads.find((t) => t.id === threadId) || {
     id: threadId,
     group: threadId === "guild",
-    members: catalog.map((c) => c.id),
+    members: ["owner"],
   };
 
   const senderId = auth.role === "owner" ? "owner" : (auth.participant && auth.participant.id) || "guest";
-  const senderName = auth.role === "owner" ? "Deonte" : (auth.participant && auth.participant.name) || "Guest";
+  const senderName = auth.role === "owner" ? prefs.ownerName : (auth.participant && auth.participant.name) || "Guest";
   const ownerMessage = appendLine({
     threadId,
     from: senderId,
@@ -226,6 +229,20 @@ export async function POST(request) {
           });
           send("message", { message: msg });
           send("done", { via: "demo", messages: [msg] });
+          controller.close();
+          return;
+        }
+
+        if (queue.length === 0 && thread.group && (thread.members || []).filter((m) => m !== "owner").length === 0) {
+          const hint = appendLine({
+            threadId,
+            from: "system",
+            kind: "system",
+            text: "No agents are in this group yet. Tap + Add / Invite to pick members or @mention any character.",
+            catalog,
+          });
+          send("message", { message: hint });
+          send("done", { via: "empty-group", messages: [hint] });
           controller.close();
           return;
         }
@@ -361,6 +378,11 @@ export async function POST(request) {
             send("message", { message: errMsg });
             committed.push(errMsg);
           }
+        }
+
+        if (!committed.some((m) => m.kind !== "system") && hasVmBackend()) {
+          await mirrorVm(token, "POST", `/v1/threads/${threadId}/respond`, {});
+          send("fallback", { reason: "vm" });
         }
 
         send("done", { via: committed.some((m) => m.kind !== "system") ? "gemini" : "fallback", messages: committed });

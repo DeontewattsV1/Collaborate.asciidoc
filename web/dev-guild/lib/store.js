@@ -1,32 +1,23 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { getGroupName, getOwnerName } from "./auth.js";
 import { BUILTIN_CAST, statusFor, systemPromptFor } from "./cast.js";
 
 const STATE_PATH = "/tmp/dev-guild-state.json";
+
+function emptyPrefs() {
+  return { title: "", ownerName: "", setupDone: false, added: [], removed: [] };
+}
 
 function initialState() {
   return {
     seq: 0,
     messages: {
-      guild: [
-        {
-          seq: 1,
-          id: "m_welcome",
-          thread: "guild",
-          from: "tay",
-          name: "Tay",
-          kind: "agent",
-          avatar: "tay.png",
-          color: "#F5C16C",
-          text: "On it, Deonte. The Dev Guild is live — all agents, presets, and tool mascots are in this room. @mention anyone or talk to the whole room.",
-          time: new Date().toISOString(),
-          mine: false,
-        },
-      ],
+      guild: [],
     },
     threads: [],
     customAgents: [],
     invitedParticipants: [],
-    groupPrefs: { added: [], removed: [] },
+    groupPrefs: emptyPrefs(),
   };
 }
 
@@ -37,13 +28,17 @@ function loadState() {
     if (existsSync(STATE_PATH)) {
       const parsed = JSON.parse(readFileSync(STATE_PATH, "utf8"));
       if (parsed && typeof parsed === "object" && parsed.messages) {
-        state = { ...initialState(), ...parsed };
+        state = {
+          ...initialState(),
+          ...parsed,
+          groupPrefs: { ...emptyPrefs(), ...(parsed.groupPrefs || {}) },
+        };
       }
     }
   } catch {
     state = initialState();
   }
-  if (!state.seq) state.seq = 1;
+  if (typeof state.seq !== "number") state.seq = 0;
   globalThis.__devGuildState = state;
   return state;
 }
@@ -55,6 +50,10 @@ function saveState(state) {
   } catch {
     // ignore read-only fs errors
   }
+}
+
+export function resetStoreForTest() {
+  globalThis.__devGuildState = initialState();
 }
 
 export function hasVmBackend(env) {
@@ -134,7 +133,7 @@ export function saveCustomAgent(agent) {
   if (idx >= 0) list[idx] = agent;
   else list.push(agent);
   state.customAgents = list;
-  if (!state.groupPrefs) state.groupPrefs = { added: [], removed: [] };
+  if (!state.groupPrefs) state.groupPrefs = emptyPrefs();
   state.groupPrefs.removed = (state.groupPrefs.removed || []).filter((id) => id !== agent.id);
   if (!(state.groupPrefs.added || []).includes(agent.id)) {
     state.groupPrefs.added = [...(state.groupPrefs.added || []), agent.id];
@@ -154,12 +153,39 @@ export function registerInvitedParticipant(participant) {
   return participant;
 }
 
-export function buildCatalog({ env, customAgents, vmCharacters, includeSecrets = false }) {
+export function mergeGroupPrefs(cookiePrefs, env) {
+  const state = loadState();
+  const sp = state.groupPrefs || emptyPrefs();
+  const cp = cookiePrefs || emptyPrefs();
+  const hasCookiePrefs = Boolean(
+    cp.setupDone || cp.title || cp.ownerName || (cp.added && cp.added.length) || (cp.removed && cp.removed.length),
+  );
+  const removed = new Set(
+    hasCookiePrefs ? (cp.removed || []) : [...(sp.removed || []), ...(cp.removed || [])],
+  );
+  const added = [];
+  const seen = new Set();
+  for (const id of [...(cp.added || []), ...(sp.added || [])]) {
+    if (!id || id === "owner" || removed.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    added.push(id);
+  }
+  return {
+    title: String(cp.title || sp.title || getGroupName(env)).trim().slice(0, 60) || "Dev Guild",
+    ownerName: String(cp.ownerName || sp.ownerName || getOwnerName(env)).trim().slice(0, 40) || "Owner",
+    setupDone: Boolean(cp.setupDone || sp.setupDone),
+    added,
+    removed: Array.from(removed),
+  };
+}
+
+export function buildCatalog({ env, customAgents, vmCharacters, includeSecrets = false, groupTitle = "" }) {
   const state = loadState();
   const vmById = new Map((vmCharacters || []).map((c) => [c.id, c]));
   const combinedCustom = mergeCustomAgents(customAgents);
   const allRaw = [...BUILTIN_CAST, ...combinedCustom, ...(state.invitedParticipants || [])];
   const basePeers = allRaw.slice(0, 20);
+  const room = groupTitle || getGroupName(env);
   return allRaw.map((c) => {
     const vm = vmById.get(c.id);
     const st = statusFor(c, env);
@@ -174,40 +200,37 @@ export function buildCatalog({ env, customAgents, vmCharacters, includeSecrets =
       needsKey: !online && Boolean(st.needsKey),
       envVar: st.envVar || c.requiredEnv || "",
       hasKey: Boolean(c.apiKey || c.hasKey),
-      system: systemPromptFor(c, basePeers),
+      system: systemPromptFor(c, basePeers, room),
     };
     if (!includeSecrets) delete entry.apiKey;
     return entry;
   });
 }
 
-export function resolveGroupMembers({ catalog, cookiePrefs }) {
-  const state = loadState();
-  const removed = new Set([
-    ...((state.groupPrefs && state.groupPrefs.removed) || []),
-    ...((cookiePrefs && cookiePrefs.removed) || []),
-  ]);
-  const added = new Set([
-    ...((state.groupPrefs && state.groupPrefs.added) || []),
-    ...((cookiePrefs && cookiePrefs.added) || []),
-  ]);
+export function resolveGroupMembers({ catalog, cookiePrefs, vmThreads, env }) {
+  const prefs = mergeGroupPrefs(cookiePrefs, env);
+  const removed = new Set(prefs.removed || []);
+  const knownIds = new Set((catalog || []).map((c) => c.id));
   const members = ["owner"];
-  for (const c of catalog) {
-    if (removed.has(c.id) && !added.has(c.id)) continue;
-    members.push(c.id);
+
+  const vmGuild = (vmThreads || []).find((t) => t.id === "guild");
+  if (!prefs.setupDone && prefs.added.length === 0 && vmGuild && Array.isArray(vmGuild.members)) {
+    for (const id of vmGuild.members) {
+      if (id === "owner" || removed.has(id) || !knownIds.has(id) || members.includes(id)) continue;
+      members.push(id);
+    }
   }
-  for (const id of added) {
-    if (!members.includes(id)) members.push(id);
+
+  for (const id of prefs.added) {
+    if (id === "owner" || removed.has(id) || !knownIds.has(id) || members.includes(id)) continue;
+    members.push(id);
   }
   return members;
 }
 
-export function updateGroupMember(id, action, cookiePrefs) {
+export function updateGroupMember(id, action, cookiePrefs, env) {
   const state = loadState();
-  const prefs = {
-    added: [...new Set([...((state.groupPrefs && state.groupPrefs.added) || []), ...((cookiePrefs && cookiePrefs.added) || [])])],
-    removed: [...new Set([...((state.groupPrefs && state.groupPrefs.removed) || []), ...((cookiePrefs && cookiePrefs.removed) || [])])],
-  };
+  const prefs = mergeGroupPrefs(cookiePrefs, env);
   if (action === "add") {
     prefs.removed = prefs.removed.filter((item) => item !== id);
     if (!prefs.added.includes(id)) prefs.added.push(id);
@@ -220,18 +243,71 @@ export function updateGroupMember(id, action, cookiePrefs) {
   return prefs;
 }
 
-export function listThreads({ catalog, cookiePrefs, vmThreads }) {
+export function configureGroup({ title, ownerName, members, setupDone, replaceMembers = false }, cookiePrefs, catalog, env) {
   const state = loadState();
-  const members = resolveGroupMembers({ catalog, cookiePrefs });
+  const prev = mergeGroupPrefs(cookiePrefs, env);
+  const knownIds = new Set((catalog || []).map((c) => c.id));
+  const nextTitle = title !== undefined
+    ? (String(title || "").trim().slice(0, 60) || getGroupName(env))
+    : prev.title;
+  const nextOwner = ownerName !== undefined
+    ? (String(ownerName || "").trim().slice(0, 40) || getOwnerName(env))
+    : prev.ownerName;
+
+  let added = [...prev.added];
+  let removed = [...prev.removed];
+  if (Array.isArray(members)) {
+    const clean = [];
+    const seen = new Set();
+    for (const raw of members) {
+      const id = String(raw || "").trim();
+      if (!id || id === "owner" || !knownIds.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      clean.push(id);
+    }
+    if (replaceMembers) {
+      added = clean;
+      removed = [];
+    } else {
+      for (const id of clean) {
+        removed = removed.filter((item) => item !== id);
+        if (!added.includes(id)) added.push(id);
+      }
+    }
+  }
+
+  const prefs = {
+    title: nextTitle,
+    ownerName: nextOwner,
+    setupDone: setupDone !== undefined ? Boolean(setupDone) : prev.setupDone,
+    added,
+    removed,
+  };
+  state.groupPrefs = prefs;
+  saveState(state);
+  return prefs;
+}
+
+export function listThreads({ catalog, cookiePrefs, vmThreads, env }) {
+  const state = loadState();
+  const prefs = mergeGroupPrefs(cookiePrefs, env);
+  const members = resolveGroupMembers({ catalog, cookiePrefs, vmThreads, env });
   const guildMsgs = state.messages.guild || [];
   const lastGuild = [...guildMsgs].reverse().find((m) => m.kind !== "tool" && m.kind !== "card");
+  const count = Math.max(members.length - 1, 0);
+  const defaultPreview = count === 0
+    ? "Empty group — tap + Add / Invite to pick members"
+    : `${count} member${count === 1 ? "" : "s"} in group`;
+
   const guildThread = {
     id: "guild",
-    title: "The Dev Guild",
+    title: prefs.title,
+    ownerName: prefs.ownerName,
+    setupDone: prefs.setupDone,
     members,
     group: true,
-    last: (lastGuild && lastGuild.text) || "All agents & presets ready",
-    last_at: (lastGuild && lastGuild.time) || new Date().toISOString(),
+    last: (lastGuild && lastGuild.text) || defaultPreview,
+    last_at: (lastGuild && lastGuild.time) || "",
   };
 
   const dmById = new Map();
@@ -271,10 +347,10 @@ export function openDMThread(characterId, catalog) {
   return thread;
 }
 
-export function appendLine({ threadId, from, text, kind = "message", reasoning = "", tool = "", task = "", assignee = "", card_status = "", files = [], catalog = [], senderName = "" }) {
+export function appendLine({ threadId, from, text, kind = "message", reasoning = "", tool = "", task = "", assignee = "", card_status = "", files = [], catalog = [], senderName = "", env }) {
   const state = loadState();
   if (!state.messages[threadId]) state.messages[threadId] = [];
-  state.seq = (state.seq || 1) + 1;
+  state.seq = (state.seq || 0) + 1;
   const person = catalog.find((c) => c.id === from);
   const isOwner = from === "owner";
   const bubbleKind = kind === "system" || kind === "tool" || kind === "card" ? kind : (person ? person.kind : "agent");
@@ -283,7 +359,7 @@ export function appendLine({ threadId, from, text, kind = "message", reasoning =
     id: `m_${state.seq}_${Math.random().toString(36).slice(2, 7)}`,
     thread: threadId,
     from,
-    name: isOwner ? (senderName || "Deonte") : (person ? person.name : (senderName || from)),
+    name: isOwner ? (senderName || getOwnerName(env)) : (person ? person.name : (senderName || from)),
     kind: bubbleKind,
     avatar: person ? person.avatar : (isOwner ? "" : "claude.png"),
     color: person ? person.color : (isOwner ? "#0A84FF" : "#8E8E93"),
