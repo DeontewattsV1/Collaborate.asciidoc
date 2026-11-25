@@ -19,7 +19,7 @@ It creates each GitHub Environment below and limits deployments to `main`. It fi
 | `agent-gemini` | `MODEL_API_KEY` | `MODEL_NAME` = `gemini-3.8-flash` | `agent-model-bridge` |
 | `agent-xai` | `MODEL_API_KEY` | `MODEL_NAME` = `grok-4.7` | `agent-model-bridge` |
 | `sandbox-opensandbox` | `OPEN_SANDBOX_API_KEY` | `OPEN_SANDBOX_DOMAIN` (your server's host[:port], asked once), `OPEN_SANDBOX_PROTOCOL` = `https` | `opensandbox-sandbox` |
-| `sandbox-render` | `RENDER_API_KEY` | `RENDER_SANDBOX_GROUP_ID` = `sbg-dc225m56e07s73envfrg` | `render-sandbox` |
+| `sandbox-render` | `RENDER_API_KEY` | `RENDER_WORKSPACE_ID` = `tea-dc3ge117lnhs73fnjpig`, `RENDER_SANDBOX_GROUP_ID` = `sbg-dc3h680u01pc73eld1ng` | `render-sandbox` |
 
 Model IDs change often; confirm each default against the provider's current model list before the first paid run. The setup script also accepts overrides such as `OPENAI_MODEL=... bash scripts/setup_github_environments.sh`.
 
@@ -33,7 +33,7 @@ The Crafting preview workflow (`sandbox-launch`) uses repository **variables** i
 |---|---|
 | `opensandbox-sandbox` | Archives any ref, uploads it into a fresh live OpenSandbox sandbox (`golang:1.26`), runs `go vet` and `go test` there, streams the output, then kills the sandbox. The workflow fails if the tests fail. |
 | `agent-model-bridge` | Sends one open PR's diff to the selected model providers. Choose `review` for findings only, or `challenge` to have each model cross-examine the others. Posts one evidence comment, only if the PR head has not moved. |
-| `render-sandbox` | Launches and terminates a Render sandbox. |
+| `render-sandbox` | Launches a Render sandbox, runs the live two-agent broker + MCP demo, and terminates it (or leaves it until `timeoutSeconds` if `keep=true`). See [`docs/RENDER-SANDBOX.md`](RENDER-SANDBOX.md). |
 
 All three run only from `main` and only when started by the repository owner. None of them can push, merge or approve anything.
 
