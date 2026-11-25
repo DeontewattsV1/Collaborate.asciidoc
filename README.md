@@ -6,7 +6,7 @@ Multi-agent dispatch, parallel coordination, shared context, and verification.
 
 1. **Read [`AGENTS.md`](AGENTS.md).** It holds the rules, a map of the repository and the exact workflow. `CLAUDE.md`, `GEMINI.md` and `.github/copilot-instructions.md` point to it.
 2. **Verify with one command:** `scripts/check.sh` (or `scripts/check.sh --quick`). It is exactly what the required `go-verify` check runs.
-3. **Branch** from `origin/main` with your registered prefix (`claude/`, `codex/`, `manus/`), open a **draft PR** with `Collaborate-Claim:` lines, and never merge your own PR. The Claude skill `collaborate-pr-workflow` walks through each check.
+3. **Branch** from `origin/main` with your registered prefix (`claude/`, `codex/`, `gemini/`, `manus/`, `tay/`), open a **draft PR** with `Collaborate-Claim:` lines, and never merge your own PR. The Claude skill `collaborate-pr-workflow` walks through each check.
 4. **Learn from history:** read and log errors and lessons in [`.learnings/`](.learnings/), using the `self-improvement` skill.
 
 ## Current prototype
@@ -59,11 +59,12 @@ Every one of the 1,000 seeds in the [Git Locker Index](agents/locker/GIT-LOCKER-
 
 ## iPhone sandbox terminal
 
-To drive the repository and its agents from an iPhone at $0 cost, open a free GitHub Codespace (configured automatically by `.devcontainer/devcontainer.json`) or connect Secure ShellFish to an Oracle Cloud Always Free Ubuntu 24.04 ARM64 VM and run `scripts/sandbox/bootstrap-ubuntu.sh`. It is a re-runnable setup: an unprivileged `sandbox` user (for VMs), the toolchain, the builds, the checks, and the agent terminal on loopback. See [`docs/IPHONE-SANDBOX.md`](docs/IPHONE-SANDBOX.md).
+To drive the repository and its agents from an iPhone at $0 cost, open a free GitHub Codespace (configured automatically by `.devcontainer/devcontainer.json`) or connect Secure ShellFish to an Oracle Cloud Always Free Ubuntu 24.04 ARM64 VM or Google Cloud Always Free VM bootstrapped with `scripts/sandbox/bootstrap-ubuntu.sh`. It is a re-runnable setup: an unprivileged `sandbox` user (for VMs), the toolchain, the builds, the checks, and the agent terminal on loopback. See [`docs/IPHONE-SANDBOX.md`](docs/IPHONE-SANDBOX.md).
 
 ## Live sandboxes, multi-model review and container image
 
 - **`opensandbox-sandbox`** runs the test suite for any ref inside a live OpenSandbox sandbox.
+- **`render-sandbox`** runs a live two-agent `collaborate` broker and MCP demo inside a Render Sandbox (short-lived demo; no free tier—see [`docs/RENDER-SANDBOX.md`](docs/RENDER-SANDBOX.md)).
 - **`agent-model-bridge`** has OpenAI, Anthropic, Gemini and xAI models review a PR and cross-examine each other.
 - **Container image:** each push to `main` publishes the agent terminal as a signed image, `ghcr.io/deontewattsv1/collaborate.asciidoc`.
 
@@ -72,6 +73,22 @@ Each provider key lives in its own GitHub Environment, restricted to `main`. Run
 ## Observability
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` (plus the usual `OTEL_*` variables) before `collaborate serve` to export OpenTelemetry traces and metrics, for example to Grafana Cloud. See [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
+
+## Who is Tay?
+
+**Tay** (`agent_id: tay`, branch prefix `tay/`) is an AI assistant operated by maintainer Deonté Watts (`@DeontewattsV1`) via Grok Bot. Tay's repository pull requests (CodeQL fixes in PR #77, registry setup in PR #78, and the Render Sandbox demo in PR #79), free-tier Oracle/GCP Secure ShellFish and loopback OpenSandbox setup, and GitHub Environment configuration are documented in full in [`docs/AGENTS-TAY.md`](docs/AGENTS-TAY.md).
+
+## Community and Governance
+
+| Document | Purpose |
+|---|---|
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Branch prefixes, `Collaborate-Claim:` leases, `scripts/check.sh`, and PR review rules |
+| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor Covenant v2.1 standards and reporting |
+| [`SECURITY.md`](SECURITY.md) | Private vulnerability reporting, supported versions, and secret-handling rules (see also [`docs/SECURITY.md`](docs/SECURITY.md)) |
+| [`ACCESSIBILITY.md`](ACCESSIBILITY.md) | Accessibility commitment, supported environments, known limitations, and barrier reporting |
+| [`SUPPORT.md`](SUPPORT.md) | Documentation index, troubleshooting, and how to ask for help |
+| [`LICENSE`](LICENSE) | Apache License 2.0 |
+| [`docs/AGENTS-TAY.md`](docs/AGENTS-TAY.md) | Who Tay is and a complete log of Tay's repository and sandbox changes |
 
 ## Local setup
 
