@@ -26,7 +26,7 @@ Separate verified local/CI results from anything not executed (`PASS` / `FAIL` /
 
 ## Checklist
 
-- [ ] Read [`AGENTS.md`](AGENTS.md) and checked open PRs for overlapping `Collaborate-Claim:` paths.
+- [ ] Read [`AGENTS.md`](../AGENTS.md) and checked open PRs for overlapping `Collaborate-Claim:` paths.
 - [ ] Branched from up-to-date `origin/main` using a registered prefix (never pushed to `main` or another agent's branch).
 - [ ] Verified no secrets, API keys, tokens, `.collab/`, or `.agentterm/` private keys are included.
 - [ ] Leaving approval and merge to an independent human maintainer (never self-approving).

@@ -3,6 +3,7 @@ import { getGroupName, getOwnerName } from "./auth.js";
 import { BUILTIN_CAST, statusFor, systemPromptFor } from "./cast.js";
 import { DEMO_AGENT_IDS, isDemoMode } from "./demo.js";
 import { directoryCharacters } from "./directory.js";
+import { isReaction, summarizeReactions, viewerIdFromAuth } from "./social.js";
 
 const STATE_PATH = "/tmp/dev-guild-state.json";
 
@@ -23,6 +24,7 @@ function initialState() {
     threads: [],
     customAgents: [],
     invitedParticipants: [],
+    reactions: {},
     groupPrefs: emptyPrefs(),
   };
 }
@@ -37,6 +39,7 @@ function loadState() {
         state = {
           ...initialState(),
           ...parsed,
+          reactions: { ...(parsed.reactions || {}) },
           groupPrefs: { ...emptyPrefs(), ...(parsed.groupPrefs || {}) },
         };
       }
@@ -446,7 +449,44 @@ export function appendLine({ threadId, from, text, kind = "message", reasoning =
   return msg;
 }
 
-export function getMessages(threadId, after = 0, env) {
+// addReaction toggles one emoji for one actor. Reaction state is keyed by
+// thread and message id, so it survives a reload with the transcript. In demo
+// mode nothing is persisted; the client keeps the reaction for the session.
+export function addReaction({ threadId, messageId, emoji, from = "owner", env, allowMissing = false }) {
+  const clean = String(emoji || "");
+  if (!isReaction(clean)) {
+    const err = new Error("unsupported reaction");
+    err.status = 400;
+    throw err;
+  }
+  if (isDemoMode(env)) return { persisted: false, messageId, reactions: [] };
+  const state = loadState();
+  if (!allowMissing && !(state.messages[threadId] || []).some((m) => m.id === messageId)) {
+    const err = new Error("message not found");
+    err.status = 404;
+    throw err;
+  }
+  if (!state.reactions) state.reactions = {};
+  const key = `${threadId}:${messageId}`;
+  const room = { ...(state.reactions[key] || {}) };
+  const actors = new Set(room[clean] || []);
+  if (actors.has(from)) actors.delete(from);
+  else actors.add(from);
+  if (actors.size) room[clean] = Array.from(actors);
+  else delete room[clean];
+  if (Object.keys(room).length) state.reactions[key] = room;
+  else delete state.reactions[key];
+  saveState(state);
+  return { persisted: true, messageId, reactions: summarizeReactions(room, from) };
+}
+
+// invitedMessages reads the group with reaction state personalized for the
+// authenticated participant rather than the owner of the browser session.
+export function invitedMessages({ auth, after = 0, env, threadId = "guild" } = {}) {
+  return getMessages(threadId, after, env, viewerIdFromAuth(auth));
+}
+
+export function getMessages(threadId, after = 0, env, viewer = "owner") {
   if (isDemoMode(env)) return [];
   const state = loadState();
   const all = (state.messages[threadId] || []).map((m) => ({ ...m }));
@@ -458,7 +498,12 @@ export function getMessages(threadId, after = 0, env) {
     const read = all.slice(lastOwner + 1).some((m) => !m.mine && m.kind !== "system");
     all[lastOwner].status = read ? "Read" : "Delivered";
   }
-  return all.filter((m) => (m.seq || 0) > Number(after || 0));
+  return all
+    .filter((m) => (m.seq || 0) > Number(after || 0))
+    .map((m) => {
+      const room = (state.reactions || {})[`${threadId}:${m.id}`];
+      return room ? { ...m, reactions: summarizeReactions(room, viewer) } : m;
+    });
 }
 
 export function slugifyAgentId(name, existingIds) {

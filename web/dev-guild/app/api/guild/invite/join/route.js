@@ -13,7 +13,7 @@ import {
 import {
   appendLine,
   buildCatalog,
-  getMessages,
+  invitedMessages,
   mergeGroupPrefs,
   registerInvitedParticipant,
   slugifyAgentId,
@@ -91,7 +91,7 @@ export async function POST(request) {
     thread: "guild",
     groupTitle: nextPrefs.title,
     joinMessage: joinMsg,
-    messages: getMessages("guild", 0),
+    messages: invitedMessages({ auth: { role: "invite", participant } }),
     endpoints: {
       postMessage: "/api/guild/invite/message",
       listMessages: `/api/guild/invite/message?invite=${encodeURIComponent(invite)}`,

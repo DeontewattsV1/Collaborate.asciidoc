@@ -1,6 +1,6 @@
 # Keys for the Dev Guild
 
-Provider keys stay in GitHub Environments. The guild bridge on the VM reads them from the process environment. The phone never sees them.
+Provider keys stay in GitHub Environments. The guild bridge on the VM reads them from the process environment. They are never sent to the browser.
 
 ## 1. Create the environments
 
@@ -21,7 +21,7 @@ The script creates each environment, limits it to `main`, sets `MODEL_NAME`, and
 
 GitHub will not show a secret back. On the VM, export the value as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `XAI_API_KEY`. See [`DEV-GUILD.md`](DEV-GUILD.md).
 
-The phone's primary model path is the free Gemini API. Set `GOOGLE_GENERATIVE_AI_API_KEY` as a repository Actions secret and as a server-side Vercel environment variable. Optional `GROQ_API_KEY` and `OPENROUTER_API_KEY` are the next free fallbacks. The VM keys above answer when those are unset or exhausted. See [`DEV-GUILD.md`](DEV-GUILD.md).
+The primary model path is the free Gemini API. Set `GOOGLE_GENERATIVE_AI_API_KEY` as a repository Actions secret and as a server-side Vercel environment variable. Optional `GROQ_API_KEY` and `OPENROUTER_API_KEY` are the next free fallbacks. The VM keys above answer when those are unset or exhausted. See [`DEV-GUILD.md`](DEV-GUILD.md).
 
 ## Never
 

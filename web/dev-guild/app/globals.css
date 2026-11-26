@@ -713,6 +713,49 @@ button { cursor: pointer; }
   max-width: 84%;
   margin: 6px 0;
 }
+.bubble-extras {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 6px 6px 38px;
+}
+.bubble-extras.mine {
+  justify-content: flex-end;
+  margin: 3px 6px 6px 0;
+}
+.reaction-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.reaction-chip {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #2c2c2e;
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.reaction-chip.mine {
+  border-color: rgba(10, 132, 255, 0.75);
+  background: rgba(10, 132, 255, 0.22);
+}
+.reaction-picker {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: #2c2c2e;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.reaction-picker button {
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  padding: 3px 4px;
+  cursor: pointer;
+}
 .receipt {
   align-self: flex-end;
   text-align: right;

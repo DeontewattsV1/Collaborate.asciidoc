@@ -39,9 +39,8 @@ The repository is built around text-first and terminal-native workflows:
 
 ## Known Limitations
 
-The following limitations exist in the current codebase (verified by source
-inspection; formal WCAG 2.1/2.2 testing and automated screen-reader audits are
-**NOT RUN**):
+The following limitations exist in the current codebase. No formal WCAG 2.1/2.2
+audit or automated screen-reader test is part of `scripts/check.sh` yet.
 
 1. **No formal accessibility audit yet:** No automated accessibility linter
    (such as axe-core or pa11y) or structured screen-reader testing (VoiceOver,

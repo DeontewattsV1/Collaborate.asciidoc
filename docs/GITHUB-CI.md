@@ -1,16 +1,37 @@
-# GitHub CI integration gate
+# CI and the merge boundary
 
-The repository workflow [`ci.yml`](../.github/workflows/ci.yml) uses GitHub-hosted runners, grants `contents: read`, and publishes the stable job check `go-verify`. It runs format checks, uncached tests, the race detector, `go vet`, and builds both CLIs with CGO enabled and the system SQLite development library installed.
+The repository workflow [`ci.yml`](../.github/workflows/ci.yml) runs on GitHub-hosted runners with `contents: read` and publishes the stable check `go-verify`. It runs formatting, uncached tests, the race detector, `go vet`, and builds every binary with CGO enabled and the system SQLite development library installed.
 
-The checked-in [`main-required-ci.json`](../.github/rulesets/main-required-ci.json) targets the repository default branch and proposes strict `go-verify` plus `agent-registry` checks from the GitHub Actions integration (`integration_id` 15368), with no bypass actors. The live ruleset `main-require-independent-ci` (ID `27378635`) currently requires only `go-verify`; the new registry check is not yet a live merge blocker. Applying that ruleset change is a separate repository-settings operation and should wait until intended agent identities are configured and the new check has produced a successful run. The existing live rule requires pull requests, is strict about branch freshness, and has no bypass actors. The submitted payload sets required approving reviews to zero; GitHub’s stored ruleset additionally returned `require_extra_approval_for_unattributed_changes: true`. Thus no general fixed approval count is required, but GitHub may request an extra approval for unattributed changes. Editing the checked-in JSON does not automatically update the live setting. Rulesets layer with any existing branch-protection settings.
+`scripts/check.sh` is the same sequence locally. A local pass means the required check passes, apart from runner-only setup such as installing `libsqlite3-dev`.
 
-The CI result demonstrates that the configured commands ran on GitHub-hosted infrastructure. It does not prove code correctness, test sufficiency, or hostile-agent isolation. The workflow supplies no provider API keys or other application secrets to pull-request code. The checkout step disables persisted Git credentials.
+## What the ruleset should require
 
-## Official references
+The checked-in [`main-required-ci.json`](../.github/rulesets/main-required-ci.json) is a proposal for the default branch:
 
-- GitHub, [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets): required checks, strict/loose freshness, and expected check source.
-- GitHub, [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets): enforcement states, branch targeting, bypass and rule layering.
-- GitHub, [REST API endpoints for repository rules](https://docs.github.com/en/rest/repos/rules): ruleset payload schema and required-status-check fields.
-- GitHub Actions, [Automatic token authentication](https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication): least-privilege `GITHUB_TOKEN` permissions.
-- GitHub API, [GitHub Actions integration metadata](https://api.github.com/apps/github-actions): integration identity used by the ruleset check source.
-- Model Context Protocol, [Protocol overview](https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro) and [Build an MCP client](https://modelcontextprotocol.io/docs/2026-07-28/develop/build-client): client/server protocol and client tool-call flow.
+- require the `go-verify` and `agent-registry` checks from the GitHub Actions integration;
+- require a pull request before merging, with a strict up-to-date branch;
+- require at least one independent approval, dismiss stale approvals, and resolve review threads;
+- allow no bypass actors.
+
+Editing the checked-in JSON does not change the live repository. A repository administrator must apply the ruleset through the GitHub UI or an authorized administration client. Apply the `agent-registry` requirement only after the intended identities are configured and the check has produced a successful run.
+
+## What CI proves
+
+A green run shows that the configured commands ran on GitHub-hosted infrastructure against that commit. It does not prove code correctness, test sufficiency, or hostile-agent isolation. The workflow supplies no provider API keys or application secrets to pull-request code, and the checkout step disables persisted Git credentials.
+
+The `coordinate` workflow is a conflict detector, not an isolation boundary. It makes overlapping PR leases visible and, when made a required check, blocks them from merging.
+
+## Applying a ruleset change
+
+1. Read the live ruleset through the authenticated GitHub API and compare it with the checked-in proposal.
+2. Confirm that the required check names match the jobs that actually run, and that the Actions integration is the expected source.
+3. Apply the change with an administrator account. Do not let a workflow or a pull request modify live rulesets.
+4. Open a test PR, confirm that an unapproved or stale branch is blocked, then confirm that an independently approved and up-to-date branch can merge. Do not merge the test PR.
+
+## References
+
+- GitHub, [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
+- GitHub, [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
+- GitHub, [REST API endpoints for repository rules](https://docs.github.com/en/rest/repos/rules)
+- GitHub Actions, [Automatic token authentication](https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication)
+- Model Context Protocol, [Protocol overview](https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro)
