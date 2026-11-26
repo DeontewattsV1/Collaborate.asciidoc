@@ -9,7 +9,7 @@ name: GHCR cleanup
 # Deletion is permanent. Scheduled runs only print the plan until the
 # repository variable GHCR_CLEANUP_ENABLED is set to `true`
 # (Settings > Secrets and variables > Actions > Variables). A manual run deletes
-# only when its `dry_run` input is unticked.
+# only when its `mode` input is set to `delete`.
 #
 # One-time setup: the package must grant this repository Admin access
 # (package Settings > Manage Actions access), or the GITHUB_TOKEN cannot
@@ -20,14 +20,17 @@ on:
     - cron: '17 6 * * 1'
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: Only print what would be deleted
-        type: boolean
-        default: true
+      mode:
+        description: "dry-run only prints the plan; delete removes versions permanently"
+        type: choice
+        options:
+          - dry-run
+          - delete
+        default: dry-run
       keep:
         description: Number of newest images to keep (tagged images are always kept)
-        type: number
-        default: 10
+        type: string
+        default: '10'
 
 permissions:
   contents: read
@@ -54,9 +57,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
           PACKAGE: ${{ github.event.repository.name }}
-          KEEP: ${{ inputs.keep || 10 }}
-          DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) || (github.event_name == 'schedule' && vars.GHCR_CLEANUP_ENABLED != 'true') }}
+          KEEP: ${{ inputs.keep || '10' }}
+          # Delete only on an explicit manual `delete`, or on schedule once enabled.
+          DRY_RUN: ${{ !((github.event_name == 'workflow_dispatch' && inputs.mode == 'delete') || (github.event_name == 'schedule' && vars.GHCR_CLEANUP_ENABLED == 'true')) }}
         run: |
+          if ! [[ "$KEEP" =~ ^[1-9][0-9]{0,3}$ ]]; then
+            echo "::error::keep must be a whole number from 1 to 9999, got: '$KEEP'. Nothing was deleted."
+            exit 2
+          fi
+          echo "Mode: $([ "$DRY_RUN" = "true" ] && echo dry-run || echo DELETE), keep newest $KEEP images"
           args=(--owner "$OWNER" --package "$PACKAGE" --keep "$KEEP")
           if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
           python3 .github/scripts/ghcr_cleanup.py "${args[@]}"
