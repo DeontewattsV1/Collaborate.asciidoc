@@ -351,6 +351,19 @@ test("invite code validates strictly against owner token", () => {
   assert.equal(checkGuildAuth({ jar: null, token, inviteParam: code }).ok, true);
   assert.equal(checkGuildAuth({ jar: null, token, inviteParam: "bad" }).ok, false);
 });
+
+test("owner token as bearer signs in as owner; invite bearer stays a guest", () => {
+  const token = "guild-secret-passphrase";
+  const env = { GUILD_OWNER_TOKEN: token };
+  const owner = checkGuildAuth({ jar: null, token, env, authHeader: `Bearer ${token}` });
+  assert.equal(owner.ok, true);
+  assert.equal(owner.role, "owner");
+  const guest = checkGuildAuth({ jar: null, token, env, authHeader: `Bearer ${inviteCodeFor(token)}` });
+  assert.equal(guest.ok, true);
+  assert.notEqual(guest.role, "owner");
+  assert.equal(checkGuildAuth({ jar: null, token, env, authHeader: `Bearer ${token}x` }).ok, false);
+  assert.equal(checkGuildAuth({ jar: null, token, env, authHeader: "Bearer " }).ok, false);
+});
 import { appendLine } from "./store.js";
 import { directoryCharacters } from "./directory.js";
 import { checkDemoAutoLimit, checkDemoRateLimit, DEMO_AGENT_IDS } from "./demo.js";

@@ -19,20 +19,9 @@ import {
   slugifyAgentId,
   updateGroupMember,
 } from "../../../../lib/store.js";
+import { validEndpointUrl } from "../../../../lib/endpointUrl.js";
 
 export const dynamic = "force-dynamic";
-
-function validEndpointUrl(raw) {
-  try {
-    const u = new URL(String(raw || "").trim());
-    if (u.protocol !== "https:" && u.protocol !== "http:") return "";
-    const host = u.hostname.toLowerCase();
-    if (host === "169.254.169.254" || host.endsWith(".internal")) return "";
-    return u.toString().replace(/\/$/, "");
-  } catch {
-    return "";
-  }
-}
 
 import { isDemoMode } from "../../../../lib/demo.js";
 
@@ -56,6 +45,12 @@ export async function POST(request) {
   const jar = await cookies();
   const auth = checkGuildAuth({ jar, token, authHeader: request.headers.get("authorization") });
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  // Custom agents are persisted server-side and make the server call an
+  // arbitrary model endpoint, so only the owner may add them. Invited guests
+  // join through the invite API instead.
+  if (auth.role !== "owner") {
+    return NextResponse.json({ error: "Only the group owner can add custom agents." }, { status: 403 });
+  }
 
   let body = {};
   try {

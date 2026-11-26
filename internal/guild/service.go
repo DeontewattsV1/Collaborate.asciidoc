@@ -345,7 +345,25 @@ func (s *Service) ReadRepoFile(thread, from, rel string) (string, error) {
 	if err != nil || (fullAbs != rootAbs && !strings.HasPrefix(fullAbs, rootAbs+string(filepath.Separator))) {
 		return "", errors.New("path is not allowed")
 	}
-	data, err := os.ReadFile(full)
+	// The checks above are lexical. Resolve symlinks so a link committed inside
+	// the repository cannot point outside it (or at a refused secret such as
+	// .env or guild.key under an innocent-looking name).
+	rootReal, err := filepath.EvalSymlinks(rootAbs)
+	if err != nil {
+		return "", errors.New("path is not allowed")
+	}
+	fullReal, err := filepath.EvalSymlinks(fullAbs)
+	if err != nil {
+		return "", errors.New("file is not readable")
+	}
+	relReal, err := filepath.Rel(rootReal, fullReal)
+	if err != nil || relReal == ".." || strings.HasPrefix(relReal, ".."+string(filepath.Separator)) || filepath.IsAbs(relReal) {
+		return "", errors.New("path is not allowed")
+	}
+	if _, err := safeRepoPath(filepath.ToSlash(relReal)); err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(fullReal)
 	if err != nil {
 		return "", errors.New("file is not readable")
 	}

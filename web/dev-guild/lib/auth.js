@@ -172,6 +172,11 @@ export function checkGuildAuth({ jar, token, inviteParam, authHeader, env }) {
     return { ok: true, role: "invite", participant: inviteCookie };
   }
   const bearer = String(authHeader || "").replace(/^Bearer\s+/i, "").trim();
+  // Scripts (see the custom-agent curl example in the guild directory) sign in
+  // as the owner with `Authorization: Bearer $GUILD_OWNER_TOKEN`.
+  if (bearer && safeEqual(bearer, token)) {
+    return { ok: true, role: "owner", participant: { id: "owner", name: getOwnerName(env) } };
+  }
   const candidate = inviteParam || bearer;
   if (candidate && isValidInviteCode(candidate, token)) {
     return { ok: true, role: "invite-token", participant: { id: "guest", name: "Invited Agent" } };

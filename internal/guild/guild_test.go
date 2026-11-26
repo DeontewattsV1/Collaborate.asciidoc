@@ -357,6 +357,41 @@ func TestSearchRejectsAThreadIDThatCouldChangeTheHost(t *testing.T) {
 	}
 }
 
+func TestReadRepoFileRefusesSymlinkEscapes(t *testing.T) {
+	svc := testService(t, true)
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "passwd"), []byte("root:x:0:0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("SECRET=1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "real.md"), []byte("inside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	links := map[string]string{
+		"escape.txt": filepath.Join(outside, "passwd"),
+		"outdir":     outside,
+		"notes.txt":  filepath.Join(dir, ".env"),
+		"alias.md":   filepath.Join(dir, "real.md"),
+	}
+	for name, target := range links {
+		if err := os.Symlink(target, filepath.Join(dir, name)); err != nil {
+			t.Skipf("symlinks unsupported: %v", err)
+		}
+	}
+	svc.Repo = dir
+	for _, rel := range []string{"escape.txt", "outdir/passwd", "notes.txt"} {
+		if text, err := svc.ReadRepoFile("guild", "claude", rel); err == nil {
+			t.Fatalf("%s: symlink escape was allowed, read %q", rel, text)
+		}
+	}
+	if text, err := svc.ReadRepoFile("guild", "claude", "alias.md"); err != nil || text != "inside" {
+		t.Fatalf("in-repo symlink: read %q err=%v", text, err)
+	}
+}
+
 func TestReadRepoFileIsLoggedAndRefusesSecrets(t *testing.T) {
 	svc := testService(t, true)
 	dir := t.TempDir()
