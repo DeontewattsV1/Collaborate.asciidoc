@@ -3,7 +3,7 @@ import { getGroupName, getOwnerName } from "./auth.js";
 import { BUILTIN_CAST, statusFor, systemPromptFor } from "./cast.js";
 import { DEMO_AGENT_IDS, isDemoMode } from "./demo.js";
 import { directoryCharacters } from "./directory.js";
-import { isReaction, summarizeReactions } from "./social.js";
+import { isReaction, summarizeReactions, viewerIdFromAuth } from "./social.js";
 
 const STATE_PATH = "/tmp/dev-guild-state.json";
 
@@ -478,6 +478,12 @@ export function addReaction({ threadId, messageId, emoji, from = "owner", env, a
   else delete state.reactions[key];
   saveState(state);
   return { persisted: true, messageId, reactions: summarizeReactions(room, from) };
+}
+
+// invitedMessages reads the group with reaction state personalized for the
+// authenticated participant rather than the owner of the browser session.
+export function invitedMessages({ auth, after = 0, env, threadId = "guild" } = {}) {
+  return getMessages(threadId, after, env, viewerIdFromAuth(auth));
 }
 
 export function getMessages(threadId, after = 0, env, viewer = "owner") {

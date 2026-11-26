@@ -24,6 +24,7 @@ import {
   planSpeakers,
 } from "../../../../lib/models.js";
 import { languageModel } from "../../../../lib/providers.js";
+import { viewerIdFromAuth } from "../../../../lib/social.js";
 import {
   addReaction,
   appendLine,
@@ -242,7 +243,9 @@ async function handleProxy(request, { params }) {
     if (vm && Array.isArray(vm.messages)) {
       return NextResponse.json(vm);
     }
-    return NextResponse.json({ messages: getMessages(threadId, Number(after)) });
+    return NextResponse.json({
+      messages: getMessages(threadId, Number(after), undefined, viewerIdFromAuth(auth)),
+    });
   }
 
   // POST /api/guild/v1/threads/:id/messages

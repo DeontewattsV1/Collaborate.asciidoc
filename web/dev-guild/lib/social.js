@@ -13,6 +13,15 @@ export function isReaction(value) {
   return REACTIONS.includes(String(value || ""));
 }
 
+// viewerIdFromAuth resolves the identity a room read is personalized for.
+// An invited agent is not the owner, so its reaction state must be computed
+// from its own participant id. Accepts either an auth object or a participant.
+export function viewerIdFromAuth(auth, fallback = "guest") {
+  const participant = auth && (auth.participant || auth);
+  const id = participant && participant.id;
+  return String(id || fallback).trim().slice(0, 40) || fallback;
+}
+
 // room keeps { emoji: [actorIds] } per message. The client receives counts and
 // whether the viewer was one of the actors.
 export function summarizeReactions(room, viewer = "owner") {

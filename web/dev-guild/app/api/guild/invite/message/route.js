@@ -13,7 +13,7 @@ import { languageModel } from "../../../../../lib/providers.js";
 import {
   appendLine,
   buildCatalog,
-  getMessages,
+  invitedMessages,
   mergeGroupPrefs,
   resolveGroupMembers,
 } from "../../../../../lib/store.js";
@@ -38,7 +38,7 @@ export async function GET(request) {
     authHeader: request.headers.get("authorization"),
   });
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  return NextResponse.json({ thread: "guild", messages: getMessages("guild", after) });
+  return NextResponse.json({ thread: "guild", messages: invitedMessages({ auth, after }) });
 }
 
 export async function POST(request) {

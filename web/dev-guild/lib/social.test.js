@@ -10,8 +10,9 @@ import {
   roomVibe,
   starterPrompts,
   summarizeReactions,
+  viewerIdFromAuth,
 } from "./social.js";
-import { addReaction, appendLine, getMessages, resetStoreForTest } from "./store.js";
+import { addReaction, appendLine, getMessages, invitedMessages, resetStoreForTest } from "./store.js";
 
 const DOC_PATH = fileURLToPath(new URL("../../../docs/GUILD-DIRECTORY.md", import.meta.url));
 
@@ -73,6 +74,31 @@ test("a reaction toggles on and off and rides along with the message", () => {
 
   assert.throws(() => addReaction({ threadId: "guild", messageId: msg.id, emoji: "🍕" }), /unsupported/);
   assert.throws(() => addReaction({ threadId: "guild", messageId: "m_missing", emoji: "👍" }), /not found/);
+});
+
+test("an invited agent sees its own reaction, not the owner's", () => {
+  resetStoreForTest();
+  const msg = appendLine({ threadId: "guild", from: "claude", text: "Small diff.", catalog: [] });
+  addReaction({ threadId: "guild", messageId: msg.id, emoji: "🎉", from: "owner" });
+  addReaction({ threadId: "guild", messageId: msg.id, emoji: "👍", from: "review-bot" });
+
+  const forAgent = invitedMessages({
+    auth: { role: "invite", participant: { id: "review-bot", name: "Review Bot" } },
+  });
+  assert.deepEqual(forAgent[0].reactions, [
+    { emoji: "👍", count: 1, mine: true },
+    { emoji: "🎉", count: 1, mine: false },
+  ]);
+
+  const forOwner = invitedMessages({ auth: { role: "owner", participant: { id: "owner" } } });
+  assert.deepEqual(forOwner[0].reactions, [
+    { emoji: "👍", count: 1, mine: false },
+    { emoji: "🎉", count: 1, mine: true },
+  ]);
+
+  assert.equal(viewerIdFromAuth({ role: "invite-token", participant: { id: "guest" } }), "guest");
+  assert.equal(viewerIdFromAuth({ participant: { id: "review-bot" } }), "review-bot");
+  assert.equal(viewerIdFromAuth(null), "guest");
 });
 
 test("demo reactions never persist", () => {
