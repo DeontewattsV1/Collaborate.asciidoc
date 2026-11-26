@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test lib/*.test.js"
+    "test": "node --test lib/*.test.js lib/roomStore/*.test.js"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.126",
@@ -15,6 +15,7 @@
     "@ai-sdk/openai": "^4.0.123",
     "ai": "^7.0.181",
     "next": "15.5.29",
+    "pg": "^8.23.1",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   }
