@@ -1,0 +1,62 @@
+name: GHCR cleanup
+
+# Prunes old versions of this repository's container package, keeping the
+# newest 10 images plus every image that still has a tag (main, latest,
+# nightly, v* releases). Each image is deleted together with its platform and
+# attestation manifests and its cosign `.sig`, so kept images stay pullable and
+# verifiable. See .github/scripts/ghcr_cleanup.py.
+#
+# Deletion is permanent. Scheduled runs only print the plan until the
+# repository variable GHCR_CLEANUP_ENABLED is set to `true`
+# (Settings > Secrets and variables > Actions > Variables). A manual run deletes
+# only when its `dry_run` input is unticked.
+#
+# One-time setup: the package must grant this repository Admin access
+# (package Settings > Manage Actions access), or the GITHUB_TOKEN cannot
+# delete versions.
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only print what would be deleted
+        type: boolean
+        default: true
+      keep:
+        description: Number of newest images to keep (tagged images are always kept)
+        type: number
+        default: 10
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ghcr-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Prune old package versions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ github.event.repository.name }}
+          KEEP: ${{ inputs.keep || 10 }}
+          DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) || (github.event_name == 'schedule' && vars.GHCR_CLEANUP_ENABLED != 'true') }}
+        run: |
+          args=(--owner "$OWNER" --package "$PACKAGE" --keep "$KEEP")
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          python3 .github/scripts/ghcr_cleanup.py "${args[@]}"
