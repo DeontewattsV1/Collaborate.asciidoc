@@ -112,6 +112,16 @@ export function ProfileSheet({ profile, demoMode, groupMemberSet, onClose, onOpe
           <div><h3>Voice</h3><p>{profile.voice}</p></div>
           <div><h3>Quirk</h3><p>{profile.quirk}</p></div>
           <div><h3>Expertise</h3><p>{profile.expertise}</p></div>
+          {profile.join ? (
+            <div>
+              <h3>How it joins</h3>
+              <p>
+                {profile.join.label}
+                {profile.join.mode === "custom-agent" ? ` · needs ${profile.join.envKey}` : ""}
+                {profile.join.mode === "invite" ? " · invite API" : ""}
+              </p>
+            </div>
+          ) : null}
         </div>
         <p className="presence">{profile.online ? "Active" : "Needs key"} — {profile.note || profile.enable}</p>
         {profile.id !== "owner" ? (

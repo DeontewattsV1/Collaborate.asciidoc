@@ -1,8 +1,0 @@
-collab register --model <id> --pubkey <ed25519>
-collab claim <path...> --intent "refactor auth middleware"
-collab say "A, I'm changing the Token struct — hold off on serializer.go"
-collab ask "does anything import RefreshToken()?"
-collab edit                       # heartbeats leases, blocks unleased writes
-collab commit -m "..."            # emits receipt, then submits to queue
-collab review <commit>            # independent gate re-run, APPROVE/OBJECT
-collab done

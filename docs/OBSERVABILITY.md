@@ -11,8 +11,8 @@ agents that send a `traceparent` header join the same trace.
 ## Grafana Cloud (direct)
 
 ```sh
-export OTEL_SERVICE_NAME="DeontewattsV1"
-export OTEL_RESOURCE_ATTRIBUTES="service.namespace=my-application-group,deployment.environment=production"
+export OTEL_SERVICE_NAME="collaborate"
+export OTEL_RESOURCE_ATTRIBUTES="service.namespace=collaborate,deployment.environment=production"
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp-gateway-prod-us-west-0.grafana.net/otlp"
 export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic%20<base64 of INSTANCE_ID:TOKEN>"

@@ -1,7 +1,6 @@
 """Offline checks for .devcontainer, scripts/sandbox/bootstrap-ubuntu.sh, and docs/IPHONE-SANDBOX.md.
 
-The full admin+user flow was verified in a clean ubuntu:24.04 container (see
-docs/IPHONE-SANDBOX.md); these tests guard the parts that can regress offline.
+These tests guard the parts that can regress without a live VM or phone.
 """
 import json
 import os
@@ -62,7 +61,7 @@ class BootstrapTest(unittest.TestCase):
             "ssh-ed25519",
             "-----BEGIN OPENSSH PRIVATE KEY-----",
             "ssh-ed25519 AAAA;rm -rf / x",
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICezBZBmFJs6ePKSWbqyYErDAgrqHg6BHmhh1IpEHit5 a\nssh-rsa AAAA b",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINs0Zp7/nTFmpGvn9P8+bBvVS0KfpeVykJJ3YWnMG7bH a\nssh-rsa AAAA b",
         ]
         for key in bad:
             res = run("admin", "--key", key)
@@ -72,7 +71,7 @@ class BootstrapTest(unittest.TestCase):
         self.assertIn("needs a public key", res.stderr)
 
     def test_valid_key_passes_validation(self):
-        key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICezBZBmFJs6ePKSWbqyYErDAgrqHg6BHmhh1IpEHit5 ShellFish@iPhone"
+        key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINs0Zp7/nTFmpGvn9P8+bBvVS0KfpeVykJJ3YWnMG7bH test@example.invalid"
         src = SCRIPT.read_text().split("\ninstall_gh_cli() {")[0]
         res = subprocess.run(["bash", "-c", src.split("set -euo pipefail", 1)[1] + '\nvalid_pubkey "$1"', "_", key],
                              capture_output=True, text=True, timeout=30)

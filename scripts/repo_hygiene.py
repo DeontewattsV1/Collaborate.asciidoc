@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Repository hygiene guard: turns recurring mistakes logged in .learnings/
-into checks that fail CI before they reach main.
+"""Repository hygiene guard: catches repository-shape mistakes before CI.
 
-  ops.command_pasted_as_file      (ERR-20261124-001, recurred 3 times)
-  ops.template_committed_unadapted (ERR-20261123-001, ERR-20261124-003)
+  - a tracked path whose name looks like a pasted shell command
+  - a workflow file that is not a workflow, or that builds a missing Dockerfile
 
 Usage: python3 scripts/repo_hygiene.py [repo_root]   (exit 1 on any finding)
 """
@@ -33,7 +32,7 @@ def check(root: Path, files: list[str]) -> list[str]:
     for path in files:
         if COMMAND_PATH.match(path) or (" " in path and re.search(r"(^|/)(--|\./)|\s-{1,2}[a-z]", path)):
             problems.append(f"{path!r}: file name looks like a shell command; run it in a terminal "
-                            "instead of committing it (ERR-20261124-001)")
+                            "instead of committing it (see docs/ENGINEERING-NOTES.md)")
         if path.startswith(".github/workflows/"):
             rel = path[len(".github/workflows/"):]
             if "/" in rel or not rel.endswith(WORKFLOW_SUFFIXES):
@@ -43,13 +42,12 @@ def check(root: Path, files: list[str]) -> list[str]:
             text = (root / path).read_text(encoding="utf-8", errors="replace")
             if not re.search(r"(?m)^on:", text) and not re.search(r"(?m)^['\"]?on['\"]?:", text):
                 problems.append(f"{path!r}: no top-level 'on:' trigger; this is not a workflow "
-                                "(a pasted usage snippet?) (ERR-20261123-001)")
+                                "(a pasted usage snippet?)")
             if not re.search(r"(?m)^jobs:", text):
-                problems.append(f"{path!r}: no top-level 'jobs:'; this is not a workflow (ERR-20261123-001)")
+                problems.append(f"{path!r}: no top-level 'jobs:'; this is not a workflow")
             if "docker/build-push-action" in text and re.search(r"(?m)^\s*context:\s*\.\s*$", text):
                 if not (root / "Dockerfile").is_file():
-                    problems.append(f"{path!r}: builds the repository root but there is no Dockerfile "
-                                    "(ERR-20261124-003)")
+                    problems.append(f"{path!r}: builds the repository root but there is no Dockerfile")
     return problems
 
 
@@ -59,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     for p in problems:
         print("hygiene: " + p, file=sys.stderr)
     if problems:
-        print(f"hygiene: {len(problems)} problem(s); see .learnings/ERRORS.md", file=sys.stderr)
+        print(f"hygiene: {len(problems)} problem(s); see docs/ENGINEERING-NOTES.md", file=sys.stderr)
         return 1
     print("hygiene: OK")
     return 0

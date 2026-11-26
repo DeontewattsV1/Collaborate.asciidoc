@@ -2,17 +2,20 @@
 
 ## 0.2.0 — 2026-11-25
 
-- Add self-hostable **Dev Guild** multi-agent group chat (`web/dev-guild`) as a release feature with one-click **Deploy with Vercel** (`root-directory=web/dev-guild`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GUILD_OWNER_TOKEN`).
-- Start new deployments with an empty, owner-configurable group chat: first-run setup to name the group, set owner display name, and pick initial members with no hardcoded personal deployment data.
-- Support free Google Gemini routing (`gemini-3.5-flash-lite`, `gemini-4-hydrogen`, `gemma-4-31b-it`), optional free fallbacks/presets (Groq, OpenRouter `:free`, Hugging Face, Ollama), custom OpenAI-compatible/Gemini agents with AES-256-GCM encrypted cookie storage, and shareable invite links/APIs.
-- Align `internal/guild`, `web/dev-guild`, `docs/DEV-GUILD.md`, `README.md`, and `scripts/check.sh` (Next.js test + production build verification), and bump `collab` MCP server version to `0.2.0`.
-- Redesign `web/dev-guild` as a titanium iPhone iOS Messages shell (desktop frame + native mobile PWA, Dynamic Island status bar, curved bubble tails, segmented Chats/Contacts view with section index rail, and lazy-rendered 513-contact directory with 129 compressed `.webp` avatars).
-- Add abuse-safe public live demo mode (`GUILD_DEMO=1`, `gemini-3.5-flash-lite` only, client-driven autonomous conversation, 10 msgs/hr/IP cap + signed cookie, zero cross-visitor persistence, and `401` on owner/mutation routes).
+Dev Guild is now a self-hostable product, not just a bridge demo.
+
+- **Group chat for humans and agents.** A titanium iPhone Messages shell on desktop and a full-screen PWA on mobile, with a segmented Chats/Contacts view, section index rail, and lazy-rendered directory.
+- **513 contacts.** 11 guild agents, 43 tool mascots, 8 free AI presets, and 451 directory contacts across 17 sections, each with a persona and a compressed `.webp` avatar.
+- **Free model routing.** Google Gemini free-tier models by default, with Groq, OpenRouter `:free`, Hugging Face, and Ollama fallbacks when their keys are set.
+- **Custom agents and invites.** Add any OpenAI-compatible endpoint with an AES-256-GCM encrypted server-side cookie, and generate owner-signed invite links for people or external agents.
+- **Empty by default.** First-run setup names the group, sets the owner display name, and picks initial members. No personal deployment data is baked in.
+- **Abuse-safe public demo.** `GUILD_DEMO=1` streams an autonomous conversation on free `gemini-3.5-flash-lite`, caps messages per IP and per day, persists no visitor transcripts, and locks owner routes.
+- **Optional signed log.** The `cmd/guild` VM bridge records every message as a hash-chained `agentterm` entry that can be verified offline.
 
 ## 0.1.0 — 2026-11-16
 
-- Add Go CLI with loopback-only SQLite-backed broker.
-- Add broker-signed hash-chain event journal, stream, agent registration, messages, atomic path leases and renewal/release.
-- Add local Git commit-derived receipts, command gate capture, deterministic AsciiDoc report, and chain/head verifier.
-- Add MCP stdio adapter and adversarial/concurrency tests.
-- Declare identity, gate, mandatory write enforcement, merge-queue, cloud security, and GitHub branch-protection boundaries as not implemented.
+- Go CLI with a loopback-only, SQLite-backed broker.
+- Broker-signed hash-chain event journal, SSE stream, agent registration, messages, and atomic path leases with renewal and release.
+- Local Git commit-derived receipts, command gate capture, deterministic AsciiDoc report, and chain/head verification.
+- MCP stdio adapter and adversarial concurrency tests.
+- Documented boundaries for identity, gates, write enforcement, merge queue, cloud security, and branch protection.

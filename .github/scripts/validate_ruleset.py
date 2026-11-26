@@ -46,7 +46,7 @@ def validate(path: Path = RULESET_PATH) -> None:
     pr_parameters = pull_request[0].get("parameters")
     if not isinstance(pr_parameters, dict):
         fail("pull_request parameters must be an object")
-    # Mirrors the governance gate (docs/GITHUB-GOVERNANCE-GATE.md and
+    # Mirrors the CI policy described in docs/GITHUB-CI.md and
     # scripts/test_ruleset_policy.py): at least one independent approval that
     # is invalidated by later pushes.
     approvals = pr_parameters.get("required_approving_review_count")

@@ -1,4 +1,5 @@
 import directoryEntries from "../data/contacts.json" with { type: "json" };
+import { joinFor } from "./directoryAccess.js";
 
 export function directoryCharacters(env) {
   const source = env || {};
@@ -22,6 +23,7 @@ export function directoryCharacters(env) {
     talks: "Collaborates with the guild on tooling, workflows, and integration choices.",
     expertise: entry.persona,
     persona: entry.persona,
+    join: joinFor(entry),
     requiredEnvKey: entry.requiredEnvKey || "GOOGLE_GENERATIVE_AI_API_KEY",
     freeTier: Boolean(entry.freeTier),
     isPersona: true,

@@ -25,6 +25,7 @@ import {
 } from "../../../../lib/models.js";
 import { languageModel } from "../../../../lib/providers.js";
 import {
+  addReaction,
   appendLine,
   buildCatalog,
   configureGroup,
@@ -198,6 +199,35 @@ async function handleProxy(request, { params }) {
     const res = NextResponse.json({ ok: true, members: guild ? guild.members : [] });
     res.cookies.set("guild_group_prefs", sealGroupPrefs(nextPrefs, token), cookieOptions());
     return res;
+  }
+
+  // POST /api/guild/v1/threads/:id/messages/:messageId/reactions
+  if (
+    request.method === "POST" &&
+    parts.length === 6 &&
+    parts[0] === "v1" &&
+    parts[1] === "threads" &&
+    parts[3] === "messages" &&
+    parts[5] === "reactions"
+  ) {
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "bad json" }, { status: 400 });
+    }
+    const threadId = parts[2];
+    const messageId = parts[4];
+    if (!/^m_[A-Za-z0-9_-]{1,64}$/.test(messageId)) {
+      return NextResponse.json({ error: "bad message id" }, { status: 400 });
+    }
+    const from = auth.role === "owner" ? "owner" : (auth.participant && auth.participant.id) || "guest";
+    try {
+      const result = addReaction({ threadId, messageId, emoji: body.emoji, from, allowMissing: hasVmBackend() });
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      return NextResponse.json({ error: err.message }, { status: err.status || 400 });
+    }
   }
 
   // GET /api/guild/v1/threads/:id/messages

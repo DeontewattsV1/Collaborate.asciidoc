@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, DemoSheet, PhoneFrame, ProfileSheet, timeLabel } from "./components";
+import { REACTIONS, roomVibe, starterPrompts } from "../lib/social.js";
 
 const STARTER_IDS = ["claude", "grok", "gemini", "codex", "tay"];
 const DEMO_CAST_IDS = ["claude", "grok", "chatgpt", "gemini", "tay"];
@@ -11,11 +12,6 @@ const DEMO_TOPICS = [
   "routing Dev Guild replies through free Gemini models with zero credit card",
   "making an open-source multi-agent group chat feel like native iOS Messages",
   "keeping diffs narrow so go-verify and scripts/check.sh stay green",
-];
-const DEMO_STARTERS = [
-  "Hey @grok and @claude, why use Collaborate?",
-  "@tay what can this group chat do?",
-  "Debate monoliths vs microservices in 1 line each",
 ];
 
 async function api(path, options) {
@@ -105,6 +101,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [composing, setComposing] = useState(false);
   const [error, setError] = useState("");
+  const [reactionFor, setReactionFor] = useState(null);
 
   const [groupSheet, setGroupSheet] = useState(null);
   const [memberFilter, setMemberFilter] = useState("");
@@ -136,6 +133,7 @@ export default function App() {
   const autoTopicIdx = useRef(0);
   const pendingRef = useRef(false);
   const messagesRef = useRef([]);
+  const pressTimer = useRef(null);
 
   useEffect(() => { pendingRef.current = pending; }, [pending]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -575,6 +573,34 @@ export default function App() {
     }).catch(() => {});
   }
 
+  function react(messageId, emoji) {
+    if (!messageId || !REACTIONS.includes(emoji)) return;
+    setMessages((prev) => prev.map((m) => {
+      if (m.id !== messageId) return m;
+      const current = Array.isArray(m.reactions) ? m.reactions : [];
+      const hit = current.find((r) => r.emoji === emoji);
+      let next;
+      if (hit && hit.mine) {
+        next = current.map((r) => (r.emoji === emoji ? { ...r, mine: false, count: r.count - 1 } : r)).filter((r) => r.count > 0);
+      } else if (hit) {
+        next = current.map((r) => (r.emoji === emoji ? { ...r, mine: true, count: r.count + 1 } : r));
+      } else {
+        next = [...current, { emoji, count: 1, mine: true }];
+      }
+      return { ...m, reactions: next };
+    }));
+    api(`/api/guild/v1/threads/${active}/messages/${messageId}/reactions`, {
+      method: "POST",
+      body: JSON.stringify({ emoji }),
+    }).then((res) => {
+      if (res.persisted === false) return;
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions: res.reactions || [] } : m)));
+    }).catch((err) => {
+      setError(err.message);
+      loadMessages(active, false, demoMode).catch(() => {});
+    });
+  }
+
   function toggleSetupMember(id) {
     setSetupMembers((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   }
@@ -716,6 +742,16 @@ export default function App() {
   const subtitle = thread && thread.group
     ? (demoMode ? `${memberCount} demo agents ›` : (memberCount === 0 ? "Empty group ›" : `${memberCount} members ›`))
     : "iMessage ›";
+  const vibe = roomVibe({
+    members: thread && thread.members,
+    onlineIds: characters.filter((c) => c.online).map((c) => c.id),
+    demo: demoMode,
+  });
+  const starters = starterPrompts({
+    members: thread && thread.members,
+    characters,
+    demo: demoMode,
+  });
   const headerFaces = thread && thread.group
     ? (thread.members || []).filter((id) => id !== "owner").slice(0, 4)
     : [(thread && (thread.members || []).find((id) => id !== "owner")) || "tay"];
@@ -902,7 +938,7 @@ export default function App() {
                 })}
               </span>
               <span className="nav-title">{title}</span>
-              <span className="nav-sub">{subtitle}</span>
+              <span className="nav-sub" title={vibe.detail}>{thread && thread.group ? vibe.label : subtitle}</span>
             </button>
             <div className="nav-right">
               <button type="button" className="nav-pill-icon" onClick={() => { setShowSearch((s) => !s); setHits(null); }} aria-label="Search chat">🔍</button>
@@ -952,7 +988,7 @@ export default function App() {
                   <>
                     <p>Agents are warming up! Jump in anytime or tap a prompt below.</p>
                     <div className="starter-chips">
-                      {DEMO_STARTERS.map((q) => (
+                      {starters.map((q) => (
                         <button key={q} type="button" className="starter-chip" onClick={() => send(q)}>{q}</button>
                       ))}
                     </div>
@@ -963,7 +999,16 @@ export default function App() {
                     <button type="button" className="pill-btn primary" onClick={() => openGroupSheet("members")}>+ Pick Members or Invite</button>
                   </>
                 ) : (
-                  <p>Send an iMessage or @mention any member to start the conversation.</p>
+                  <>
+                    <p>Send an iMessage or @mention any member to start the conversation.</p>
+                    {starters.length ? (
+                      <div className="starter-chips">
+                        {starters.map((q) => (
+                          <button key={q} type="button" className="starter-chip" onClick={() => send(q)}>{q}</button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
             ) : null}
@@ -988,6 +1033,7 @@ export default function App() {
               const samePrev = prev && prev.kind !== "system" && prev.kind !== "tool" && prev.kind !== "card" && prev.from === m.from && !showTime;
               const sameNext = next && next.kind !== "system" && next.kind !== "tool" && next.kind !== "card" && next.from === m.from && (new Date(next.time) - new Date(m.time) <= 5 * 60 * 1000);
               const lastMine = m.mine && messages.slice(i + 1).every((n) => !n.mine);
+              const messageReactions = Array.isArray(m.reactions) ? m.reactions : [];
 
               return (
                 <div key={m.id}>
@@ -1003,12 +1049,55 @@ export default function App() {
                         ) : null}
                       </div>
                     ) : null}
-                    <div className={`bubble ${m.mine ? "out" : "in"}${!sameNext ? " has-tail" : ""}`}>
+                    <div
+                      className={`bubble ${m.mine ? "out" : "in"}${!sameNext ? " has-tail" : ""}`}
+                      onDoubleClick={() => setReactionFor(m.id)}
+                      onPointerDown={() => {
+                        clearTimeout(pressTimer.current);
+                        pressTimer.current = setTimeout(() => setReactionFor(m.id), 550);
+                      }}
+                      onPointerUp={() => clearTimeout(pressTimer.current)}
+                      onPointerLeave={() => clearTimeout(pressTimer.current)}
+                      onContextMenu={(e) => { e.preventDefault(); setReactionFor(m.id); }}
+                    >
                       {m.reasoning ? <details className="thinking"><summary>Thinking</summary><p>{m.reasoning}</p></details> : null}
                       {m.text}
                       {(m.files || []).map((name) => <span className="file-chip" key={name}>{name}</span>)}
                     </div>
                   </div>
+                  {messageReactions.length || reactionFor === m.id ? (
+                    <div className={`bubble-extras${m.mine ? " mine" : ""}`}>
+                      {messageReactions.length ? (
+                        <div className="reaction-chips">
+                          {messageReactions.map((r) => (
+                            <button
+                              type="button"
+                              key={r.emoji}
+                              className={r.mine ? "reaction-chip mine" : "reaction-chip"}
+                              onClick={() => react(m.id, r.emoji)}
+                              aria-label={`${r.emoji} ${r.count}`}
+                            >
+                              {r.emoji}{r.count > 1 ? ` ${r.count}` : ""}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      {reactionFor === m.id ? (
+                        <div className="reaction-picker" role="group" aria-label="React to message">
+                          {REACTIONS.map((emoji) => (
+                            <button
+                              type="button"
+                              key={emoji}
+                              onClick={() => { react(m.id, emoji); setReactionFor(null); }}
+                              aria-label={`React ${emoji}`}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {lastMine && m.status ? <div className="receipt">{m.status}</div> : null}
                 </div>
               );

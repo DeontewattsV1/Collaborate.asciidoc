@@ -1,4 +1,4 @@
-"""Tests for scripts/repo_hygiene.py, using the real mistakes logged in .learnings/."""
+"""Tests for scripts/repo_hygiene.py."""
 import importlib.util
 import subprocess
 import sys
@@ -33,7 +33,7 @@ class HygieneTest(unittest.TestCase):
         return path
 
     def test_commands_committed_as_files_are_caught(self):
-        # Exact file names that reached main on 2026-11-23.
+        # File names that look like pasted commands.
         for name in ["go run ./cmd/agentterm serve --registry .github/agent-registry.json",
                      "gh auth login bash scripts/setup_github_environments.sh",
                      "bash scripts/setup_github_environments.sh",
@@ -42,8 +42,8 @@ class HygieneTest(unittest.TestCase):
                 self.assertTrue(hygiene.check(self.root, [self.write(name)]), name)
 
     def test_ordinary_paths_with_spaces_pass(self):
-        files = [self.write("Event schema"), self.write("docs/AGENT-TERMINAL.md"), self.write("go.mod"),
-                 self.write("scripts/sandbox/render-sandbox.mjs")]
+        files = [self.write("Design Notes"), self.write("docs/AGENT-TERMINAL.md"), self.write("go.mod"),
+                 self.write("scripts/sandbox/bootstrap-ubuntu.sh")]
         self.assertEqual(hygiene.check(self.root, files), [])
 
     def test_workflow_dir_holds_only_real_workflows(self):

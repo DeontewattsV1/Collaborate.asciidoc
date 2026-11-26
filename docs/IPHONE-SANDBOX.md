@@ -47,7 +47,7 @@ collab-terminal
    - **Firewall (VCN Security List / NSG):** allow **only TCP port 22** (or restrict to your Tailscale network). Leave ports `8080` and `8787` closed. On the Ubuntu host itself, you can also verify/lock down UFW (`sudo ufw allow OpenSSH && sudo ufw enable && sudo ufw status`) and confirm `agentterm` binds only loopback (`ss -ltn`).
    - **Local Ubuntu Server / LXD alternative ($0):** the same `admin` and `user` steps work unchanged on your own Ubuntu 24.04 machine or an LXD container (`lxc launch ubuntu:24.04`), and Ubuntu Pro is free for up to 5 personal machines if you want ESM/Livepatch security updates.
 2. **Admin step (as `ubuntu`):** connect from Secure ShellFish with Username `ubuntu`, Host `<oracle-public-ip>`, Port `22`, **Key agent forwarding OFF**.
-   - Note: while `Collaborate.asciidoc` is private, raw GitHub URLs return 404 without a token. Either run after making the script reachable, pass a fine-grained read token header to `curl`, or run `gh auth login` first.
+   - If raw GitHub access is restricted, clone the repository first and run `bash scripts/sandbox/bootstrap-ubuntu.sh admin --key "..."` from the checkout instead of piping `curl`.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DeontewattsV1/Collaborate.asciidoc/main/scripts/sandbox/bootstrap-ubuntu.sh \
@@ -133,7 +133,7 @@ Your tailnet name, server IP, key fingerprints, and GitHub tokens belong only in
 | tmux sessions | Separate terminal activity, but share one Linux user and one set of credentials. |
 | `sandbox` user (Path B) | No sudo, so an agent cannot change the system. (Note: Codespaces containers run as `vscode`/`codespace` with container-scoped sudo.) |
 | Stronger isolation | Needs one Linux user, container or VM per agent, each with its own credentials. |
-| Shared GitHub account | Claude, Codex, Gemini and Manus all act through `DeontewattsV1`. The branch prefix says which agent claims to act; it does not prove it. Give each agent its own GitHub App or machine account to fix this (see `.learnings/FEATURE_REQUESTS.md`). |
+| Shared GitHub account | Several agents may act through one GitHub account. The branch prefix says which agent claims to act; it does not prove it. Give each agent its own GitHub App or machine account to fix this (see [`AGENT-REGISTRY.md`](AGENT-REGISTRY.md)). |
 | Provider API keys | Stay in GitHub Environments for the Actions workflows and do not reach this server. Give the server only the keys a task needs. |
 
 ## Dev Guild on the same VM
@@ -146,11 +146,3 @@ bash scripts/setup-guild.sh
 ```
 
 `collab-chat` (an alias for `guild chat`) and `guild tail` read the same conversation over SSH. The web app reaches loopback through a free outbound tunnel. See [`DEV-GUILD.md`](DEV-GUILD.md). Do not open any port except 22.
-
-## Verification status
-
-| Item | Status |
-|---|---|
-| `bootstrap-ubuntu.sh admin` and `user` on a clean Ubuntu 24.04 container | **PASS** (verified in PR #76: re-run idempotency, non-root `sandbox` with no sudo, key permissions `600`, all three builds, `check.sh --quick`, `agentterm` on `127.0.0.1:8080` with `exec:false`, `agentterm verify` OK) |
-| `bootstrap-ubuntu.sh codespace` / `codespace-start` and `.devcontainer/devcontainer.json` offline + local Debian 13 non-root build/`check.sh --quick`/`agentterm` run | **PASS** (simulated `admin` key/newline handling + live non-root `user`/`codespace` clone, `~/.bashrc` block, Go builds, `check.sh --quick`, tmux `agentterm` on loopback, `agentterm verify`) |
-| Real GitHub Codespace spin-up, real Oracle Cloud Always Free ARM64 VM, iPhone SSH / ShellFish Cloud Servers & Shell Integration | **NOT RUN** (needs your GitHub Codespace / Oracle Cloud account and iPhone) |
