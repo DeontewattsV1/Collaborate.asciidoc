@@ -1,0 +1,23 @@
+- name: Delete old packages
+  # You may pin to the exact commit or the version.
+  # uses: SmartsquareGmbH/delete-old-packages@78421c4341be2a20cc4766902b4dc2925efa5117
+  uses: SmartsquareGmbH/delete-old-packages@v1.0.0
+  with:
+    # User hosting the package(s).
+    user: # optional
+    # Organization hosting the package(s).
+    organization: # optional
+    # Names of the packages.
+    names: 
+    # Semver range pattern of the versions.
+    semver-pattern: # optional
+    # Regex pattern of the versions. Defaults to true for all versions.
+    version-pattern: # optional
+    # Number of versions to exclude from deletions. Defaults to 2.
+    keep: # optional
+    # The type of the packages, e.g. "npm" or "container".
+    type: # optional
+    # Token with the necessary scopes to delete and list package versions. Defaults to github.token scoped to the repo running the action. To delete package versions of a package outside the repo the action is running in use a Personal Access Token stored as a secret.
+    token: # optional, default is ${{ github.token }}
+    # If the action should only print what it would delete instead of actually deleting.
+    dry-run: # optional, default is false
