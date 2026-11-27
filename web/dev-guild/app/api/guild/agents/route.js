@@ -34,7 +34,7 @@ export async function GET(request) {
   const auth = checkGuildAuth({ jar, token, authHeader: request.headers.get("authorization") });
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
-  return NextResponse.json({ agents: sanitizeCustomAgents(mergeCustomAgents(cookieAgents)) });
+  return NextResponse.json({ agents: sanitizeCustomAgents(await mergeCustomAgents(cookieAgents)) });
 }
 
 export async function POST(request) {
@@ -80,8 +80,8 @@ export async function POST(request) {
 
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
   const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
-  const prefs = mergeGroupPrefs(cookiePrefs);
-  const existing = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
+  const prefs = await mergeGroupPrefs(cookiePrefs);
+  const existing = await buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
   const existingIds = new Set(existing.map((c) => c.id));
   const id = slugifyAgentId(name, existingIds);
 
@@ -109,13 +109,13 @@ export async function POST(request) {
       : "Uses server GOOGLE_GENERATIVE_AI_API_KEY (Free Gemini).",
   };
 
-  saveCustomAgent(agent);
-  const nextAgents = mergeCustomAgents([...cookieAgents, agent]);
-  const nextPrefs = updateGroupMember(id, "add", cookiePrefs);
-  const catalog = buildCatalog({ env: process.env, customAgents: nextAgents, groupTitle: nextPrefs.title });
+  await saveCustomAgent(agent);
+  const nextAgents = await mergeCustomAgents([...cookieAgents, agent]);
+  const nextPrefs = await updateGroupMember(id, "add", cookiePrefs);
+  const catalog = await buildCatalog({ env: process.env, customAgents: nextAgents, groupTitle: nextPrefs.title });
   const view = catalog.find((c) => c.id === id);
 
-  appendLine({
+  await appendLine({
     threadId: "guild",
     from: "system",
     kind: "system",

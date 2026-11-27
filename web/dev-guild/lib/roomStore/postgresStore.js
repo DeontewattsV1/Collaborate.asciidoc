@@ -31,6 +31,7 @@ function threadFrom(row) {
 
 function participantFrom(row) {
   return {
+    ...(row.profile || {}),
     id: row.id,
     name: row.name,
     kind: row.kind,
@@ -39,6 +40,15 @@ function participantFrom(row) {
     lastSeenAt: iso(row.last_seen_at),
     revokedAt: iso(row.revoked_at),
   };
+}
+
+// Display-only fields for an invited persona (avatar, colour, voice). They are
+// never permissions; migration 002 adds the column.
+function profileOf(input) {
+  const profile = input && input.profile;
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) return {};
+  const { apiKey, code, ...rest } = profile;
+  return clone(rest);
 }
 
 function agentFrom(row) {
@@ -86,7 +96,7 @@ export function postgresStore({ connectionString, pool } = {}) {
       const [roomResult, threadResult, participantResult, agentResult] = await Promise.all([
         db.query("select prefs, prefs_version from guild_rooms where id = $1", [id]),
         db.query("select id, title, members, is_group, created_at from guild_threads where room_id = $1 order by created_at", [id]),
-        db.query("select id, name, kind, persona, created_at, last_seen_at, revoked_at from guild_participants where room_id = $1 order by created_at", [id]),
+        db.query("select id, name, kind, persona, profile, created_at, last_seen_at, revoked_at from guild_participants where room_id = $1 order by created_at", [id]),
         db.query("select id, name, metadata, created_at, updated_at from guild_custom_agents where room_id = $1 order by created_at", [id]),
       ]);
       const room = roomResult.rows[0] || {};
@@ -165,6 +175,33 @@ export function postgresStore({ connectionString, pool } = {}) {
       }));
     },
 
+    async hasMessage({ roomId = "guild", threadId, messageId } = {}) {
+      await ensureReady();
+      const { rowCount } = await db.query(
+        "select 1 from guild_messages where room_id = $1 and thread_id = $2 and id = $3",
+        [normalizeId(roomId, "room id"), normalizeId(threadId, "thread id"), String(messageId || "")],
+      );
+      return rowCount > 0;
+    },
+
+    // lastMessages returns the newest chat line (not tool or card) per thread,
+    // for thread-list previews, without loading whole transcripts.
+    async lastMessages(roomId = "guild") {
+      await ensureReady();
+      const { rows } = await db.query(
+        `select distinct on (thread_id) thread_id, body, created_at
+           from guild_messages
+          where room_id = $1 and kind not in ('tool', 'card')
+          order by thread_id, seq desc`,
+        [normalizeId(roomId, "room id")],
+      );
+      const out = {};
+      for (const row of rows) {
+        out[row.thread_id] = { text: (row.body && row.body.text) || "", time: (row.body && row.body.time) || iso(row.created_at) };
+      }
+      return out;
+    },
+
     async addReaction({ roomId = "guild", threadId, messageId, emoji, actorId } = {}) {
       await ensureReady();
       const id = normalizeId(roomId, "room id");
@@ -232,15 +269,16 @@ export function postgresStore({ connectionString, pool } = {}) {
       if (!name) throw new StoreValidationError("participant name is required");
       const kind = normalizeId(input.kind, "participant kind");
       const { rows } = await db.query(
-        `insert into guild_participants (room_id, id, name, kind, persona, last_seen_at)
-         values ($1, $2, $3, $4, $5, $6)
+        `insert into guild_participants (room_id, id, name, kind, persona, last_seen_at, profile)
+         values ($1, $2, $3, $4, $5, $6, $7::jsonb)
          on conflict (room_id, id) do update
             set name = excluded.name,
                 kind = excluded.kind,
                 persona = excluded.persona,
+                profile = excluded.profile,
                 last_seen_at = coalesce(excluded.last_seen_at, guild_participants.last_seen_at)
-         returning id, name, kind, persona, created_at, last_seen_at, revoked_at`,
-        [id, participantId, name, kind, String(input.persona || ""), input.lastSeenAt || null],
+         returning id, name, kind, persona, profile, created_at, last_seen_at, revoked_at`,
+        [id, participantId, name, kind, String(input.persona || ""), input.lastSeenAt || null, JSON.stringify(profileOf(input))],
       );
       return participantFrom(rows[0]);
     },
@@ -249,7 +287,7 @@ export function postgresStore({ connectionString, pool } = {}) {
       await ensureReady();
       const id = normalizeId(roomId, "room id");
       const { rows } = await db.query(
-        "select id, name, kind, persona, created_at, last_seen_at, revoked_at from guild_participants where room_id = $1 order by created_at",
+        "select id, name, kind, persona, profile, created_at, last_seen_at, revoked_at from guild_participants where room_id = $1 order by created_at",
         [id],
       );
       return rows.map(participantFrom);

@@ -38,7 +38,7 @@ export async function GET(request) {
     authHeader: request.headers.get("authorization"),
   });
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  return NextResponse.json({ thread: "guild", messages: invitedMessages({ auth, after }) });
+  return NextResponse.json({ thread: "guild", messages: await invitedMessages({ auth, after }) });
 }
 
 export async function POST(request) {
@@ -68,18 +68,18 @@ export async function POST(request) {
 
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
   const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
-  const prefs = mergeGroupPrefs(cookiePrefs);
-  const catalog = buildCatalog({
+  const prefs = await mergeGroupPrefs(cookiePrefs);
+  const catalog = await buildCatalog({
     env: process.env,
     customAgents: cookieAgents,
     includeSecrets: true,
     groupTitle: prefs.title,
   });
-  const members = resolveGroupMembers({ catalog, cookiePrefs });
+  const members = await resolveGroupMembers({ catalog, cookiePrefs });
   const from = String(body.from || (auth.participant && auth.participant.id) || "guest").trim().slice(0, 40);
   const senderName = String(body.name || (auth.participant && auth.participant.name) || from).trim().slice(0, 40);
 
-  const posted = appendLine({
+  const posted = await appendLine({
     threadId: "guild",
     from,
     senderName,
@@ -123,7 +123,7 @@ export async function POST(request) {
           }),
       });
       if (result && result.ok && result.text) {
-        const msg = appendLine({
+        const msg = await appendLine({
           threadId: "guild",
           from: id,
           text: result.text,

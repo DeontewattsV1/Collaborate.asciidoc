@@ -70,12 +70,12 @@ async function handleProxy(request, { params }) {
   const demo = isDemoMode();
   const cookieAgents = demo ? [] : decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
   const cookiePrefs = demo ? null : readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
-  const prefs = mergeGroupPrefs(cookiePrefs);
+  const prefs = await mergeGroupPrefs(cookiePrefs);
 
   // GET /api/guild/v1/characters
   if (request.method === "GET" && joined === "v1/characters") {
     const vm = await tryVm(token, "GET", "/v1/characters");
-    const characters = buildCatalog({
+    const characters = await buildCatalog({
       env: process.env,
       customAgents: cookieAgents,
       vmCharacters: vm && vm.characters,
@@ -90,14 +90,14 @@ async function handleProxy(request, { params }) {
   if (request.method === "GET" && joined === "v1/threads") {
     const vmChars = await tryVm(token, "GET", "/v1/characters");
     const vmThreads = await tryVm(token, "GET", "/v1/threads");
-    const catalog = buildCatalog({
+    const catalog = await buildCatalog({
       env: process.env,
       customAgents: cookieAgents,
       vmCharacters: vmChars && vmChars.characters,
       includeDirectory: true,
       groupTitle: prefs.title,
     });
-    const threads = listThreads({
+    const threads = await listThreads({
       catalog,
       cookiePrefs,
       vmThreads: vmThreads && vmThreads.threads,
@@ -115,9 +115,9 @@ async function handleProxy(request, { params }) {
     }
     const vm = await tryVm(token, "POST", "/v1/threads", body);
     if (vm && vm.id) return NextResponse.json(vm);
-    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, includeDirectory: true, groupTitle: prefs.title });
+    const catalog = await buildCatalog({ env: process.env, customAgents: cookieAgents, includeDirectory: true, groupTitle: prefs.title });
     try {
-      const thread = openDMThread(String(body.with || ""), catalog);
+      const thread = await openDMThread(String(body.with || ""), catalog);
       return NextResponse.json(thread);
     } catch (err) {
       return NextResponse.json({ error: err.message }, { status: err.status || 400 });
@@ -138,9 +138,9 @@ async function handleProxy(request, { params }) {
     } catch {
       return NextResponse.json({ error: "bad json" }, { status: 400 });
     }
-    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, includeDirectory: true, groupTitle: prefs.title });
+    const catalog = await buildCatalog({ env: process.env, customAgents: cookieAgents, includeDirectory: true, groupTitle: prefs.title });
     const wasSetupDone = Boolean(prefs.setupDone);
-    const nextPrefs = configureGroup(
+    const nextPrefs = await configureGroup(
       {
         title: body.title,
         ownerName: body.ownerName,
@@ -151,11 +151,11 @@ async function handleProxy(request, { params }) {
       cookiePrefs,
       catalog,
     );
-    const threads = listThreads({ catalog, cookiePrefs: nextPrefs });
+    const threads = await listThreads({ catalog, cookiePrefs: nextPrefs });
     const guild = threads.find((t) => t.id === "guild");
     const memberCount = guild ? Math.max(guild.members.length - 1, 0) : 0;
     if (!wasSetupDone && nextPrefs.setupDone) {
-      appendLine({
+      await appendLine({
         threadId: "guild",
         from: "system",
         kind: "system",
@@ -189,13 +189,13 @@ async function handleProxy(request, { params }) {
     }
     const id = String(body.id || "").trim();
     const action = body.action === "remove" ? "remove" : "add";
-    const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, includeDirectory: true, groupTitle: prefs.title });
+    const catalog = await buildCatalog({ env: process.env, customAgents: cookieAgents, includeDirectory: true, groupTitle: prefs.title });
     const character = catalog.find((c) => c.id === id);
     if (!character) {
       return NextResponse.json({ error: "unknown character" }, { status: 400 });
     }
-    const nextPrefs = updateGroupMember(id, action, cookiePrefs);
-    const threads = listThreads({ catalog, cookiePrefs: nextPrefs });
+    const nextPrefs = await updateGroupMember(id, action, cookiePrefs);
+    const threads = await listThreads({ catalog, cookiePrefs: nextPrefs });
     const guild = threads.find((t) => t.id === "guild");
     const res = NextResponse.json({ ok: true, members: guild ? guild.members : [] });
     res.cookies.set("guild_group_prefs", sealGroupPrefs(nextPrefs, token), cookieOptions());
@@ -224,7 +224,7 @@ async function handleProxy(request, { params }) {
     }
     const from = auth.role === "owner" ? "owner" : (auth.participant && auth.participant.id) || "guest";
     try {
-      const result = addReaction({ threadId, messageId, emoji: body.emoji, from, allowMissing: hasVmBackend() });
+      const result = await addReaction({ threadId, messageId, emoji: body.emoji, from, allowMissing: hasVmBackend() });
       return NextResponse.json({ ok: true, ...result });
     } catch (err) {
       return NextResponse.json({ error: err.message }, { status: err.status || 400 });
@@ -244,7 +244,7 @@ async function handleProxy(request, { params }) {
       return NextResponse.json(vm);
     }
     return NextResponse.json({
-      messages: getMessages(threadId, Number(after), undefined, viewerIdFromAuth(auth)),
+      messages: await getMessages(threadId, Number(after), undefined, viewerIdFromAuth(auth)),
     });
   }
 
@@ -287,7 +287,7 @@ async function handleProxy(request, { params }) {
           tryVm(token, "GET", "/v1/characters"),
           tryVm(token, "GET", "/v1/threads"),
         ]);
-    const catalog = buildCatalog({
+    const catalog = await buildCatalog({
       env: process.env,
       customAgents: cookieAgents,
       vmCharacters: vmChars && vmChars.characters,
@@ -295,7 +295,7 @@ async function handleProxy(request, { params }) {
       includeDirectory: true,
       groupTitle: prefs.title,
     });
-    const threads = listThreads({
+    const threads = await listThreads({
       catalog,
       cookiePrefs,
       vmThreads: vmThreads && vmThreads.threads,
@@ -312,7 +312,7 @@ async function handleProxy(request, { params }) {
       : auth.role === "owner"
         ? prefs.ownerName
         : (auth.participant && auth.participant.name) || "Guest";
-    const posted = appendLine({
+    const posted = await appendLine({
       threadId,
       from: senderId,
       senderName,
@@ -363,7 +363,7 @@ async function handleProxy(request, { params }) {
           }),
       });
       if (result && result.ok && result.text) {
-        const msg = appendLine({
+        const msg = await appendLine({
           threadId,
           from: id,
           text: result.text,

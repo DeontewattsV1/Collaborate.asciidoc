@@ -33,10 +33,10 @@ export async function GET(request) {
       const data = await vmFetch(token, "POST", "/v1/search", { thread });
       messages = data.messages || [];
     } catch {
-      messages = getMessages(thread, 0);
+      messages = await getMessages(thread, 0);
     }
   } else {
-    messages = getMessages(thread, 0);
+    messages = await getMessages(thread, 0);
   }
   const documents = messages.map((m) => ({ text: `${m.name}: ${m.text || m.task || ""}`, message: m }));
   const ranked = searchHistory({ query: q, documents });

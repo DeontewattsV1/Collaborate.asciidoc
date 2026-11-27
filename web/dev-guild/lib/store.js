@@ -4,6 +4,8 @@ import { BUILTIN_CAST, statusFor, systemPromptFor } from "./cast.js";
 import { DEMO_AGENT_IDS, isDemoMode } from "./demo.js";
 import { directoryCharacters } from "./directory.js";
 import { isReaction, summarizeReactions, viewerIdFromAuth } from "./social.js";
+import { StoreConflictError } from "./roomStore/errors.js";
+import { postgresStore } from "./roomStore/postgresStore.js";
 
 const STATE_PATH = "/tmp/dev-guild-state.json";
 
@@ -63,6 +65,96 @@ function saveState(state) {
 
 export function resetStoreForTest() {
   globalThis.__devGuildState = initialState();
+}
+
+// ---------------------------------------------------------------------------
+// Durable backend selection. GUILD_STORE=postgres (with DATABASE_URL) routes
+// every read and write below through the Postgres room store. When it is unset
+// the original in-memory + /tmp state is used, so the demo and local dev work
+// with no database. Demo mode never persists, whatever the backend.
+// ---------------------------------------------------------------------------
+const ROOM_ID = "guild";
+
+export function usesPostgres(env) {
+  const source = env || process.env;
+  const kind = source.GUILD_STORE !== undefined ? source.GUILD_STORE : process.env.GUILD_STORE;
+  return String(kind || "").trim().toLowerCase() === "postgres";
+}
+
+export function roomStore() {
+  if (!globalThis.__devGuildRoomStore) {
+    const connectionString = String(process.env.DATABASE_URL || "").trim();
+    if (!connectionString) throw new Error("GUILD_STORE=postgres requires DATABASE_URL");
+    globalThis.__devGuildRoomStore = postgresStore({ connectionString });
+  }
+  return globalThis.__devGuildRoomStore;
+}
+
+// Tests inject a postgres-backed store (or reset to null) through this hook.
+export function setRoomStoreForTest(store) {
+  globalThis.__devGuildRoomStore = store || null;
+}
+
+export function storeKind(env) {
+  return usesPostgres(env) ? "postgres" : "memory";
+}
+
+function prefsFromRoom(room) {
+  const { version: rowVersion, stamp, ...rest } = room.prefs || {};
+  return {
+    prefs: { ...emptyPrefs(), ...rest, version: Number(stamp || 0) || 0 },
+    rowVersion: Number(rowVersion || 0) || 0,
+  };
+}
+
+function profileOf(participant) {
+  // The invite code is derived from the owner token; it is never persisted.
+  const { id, name, kind, persona, code, createdAt, lastSeenAt, revokedAt, ...profile } = participant || {};
+  return profile;
+}
+
+// readState returns the slice of state the catalog and thread helpers need, in
+// the same shape for both backends.
+async function readState(env) {
+  if (!usesPostgres(env)) return loadState();
+  const room = await roomStore().loadRoom(ROOM_ID);
+  return {
+    customAgents: room.customAgents || [],
+    invitedParticipants: (room.participants || [])
+      .filter((p) => !p.revokedAt)
+      .map(({ createdAt, lastSeenAt, revokedAt, ...p }) => p),
+    threads: room.threads || [],
+    groupPrefs: prefsFromRoom(room).prefs,
+  };
+}
+
+async function readServerPrefs(env) {
+  if (!usesPostgres(env)) return { prefs: { ...emptyPrefs(), ...(loadState().groupPrefs || {}) }, rowVersion: 0 };
+  return prefsFromRoom(await roomStore().loadRoom(ROOM_ID));
+}
+
+// writePrefs applies compute(previousMergedPrefs) and persists it. Postgres
+// writes use the room's optimistic version and retry on a concurrent update.
+async function writePrefs(cookiePrefs, env, compute) {
+  if (!usesPostgres(env)) {
+    const state = loadState();
+    const prefs = compute(mergePrefs(state.groupPrefs, cookiePrefs, env));
+    state.groupPrefs = prefs;
+    saveState(state);
+    return prefs;
+  }
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const { prefs: server, rowVersion } = await readServerPrefs(env);
+    const prefs = compute(mergePrefs(server, cookiePrefs, env));
+    const { version, ...rest } = prefs;
+    try {
+      await roomStore().savePrefs({ roomId: ROOM_ID, prefs: { ...rest, stamp: version }, expectedVersion: rowVersion });
+      return prefs;
+    } catch (err) {
+      if (!(err instanceof StoreConflictError) || attempt === 3) throw err;
+    }
+  }
+  throw new StoreConflictError();
 }
 
 export function hasVmBackend(env) {
@@ -127,15 +219,24 @@ export function sanitizeCustomAgents(list) {
   }));
 }
 
-export function mergeCustomAgents(cookieAgents) {
-  const state = loadState();
+function mergeAgentLists(stateAgents, cookieAgents) {
   const byId = new Map();
-  for (const a of state.customAgents || []) byId.set(a.id, a);
+  for (const a of stateAgents || []) byId.set(a.id, a);
   for (const a of cookieAgents || []) byId.set(a.id, a);
   return Array.from(byId.values());
 }
 
-export function saveCustomAgent(agent) {
+export async function mergeCustomAgents(cookieAgents, env) {
+  const state = await readState(env);
+  return mergeAgentLists(state.customAgents, cookieAgents);
+}
+
+export async function saveCustomAgent(agent, env) {
+  if (usesPostgres(env)) {
+    // The room store strips apiKey; keys stay in the encrypted cookie.
+    await roomStore().upsertCustomAgent({ roomId: ROOM_ID, agent });
+    return agent;
+  }
   const state = loadState();
   const list = state.customAgents || [];
   const idx = list.findIndex((item) => item.id === agent.id);
@@ -151,7 +252,17 @@ export function saveCustomAgent(agent) {
   return agent;
 }
 
-export function registerInvitedParticipant(participant) {
+// Invited participants are AI personas or guests shown in the room. They are
+// never authenticated identities and never carry room permissions; see
+// lib/rooms/authz.js for identities and memberships.
+export async function registerInvitedParticipant(participant, env) {
+  if (usesPostgres(env)) {
+    await roomStore().upsertParticipant({
+      roomId: ROOM_ID,
+      participant: { ...participant, profile: profileOf(participant) },
+    });
+    return participant;
+  }
   const state = loadState();
   const list = state.invitedParticipants || [];
   const idx = list.findIndex((item) => item.id === participant.id);
@@ -162,9 +273,8 @@ export function registerInvitedParticipant(participant) {
   return participant;
 }
 
-export function mergeGroupPrefs(cookiePrefs, env) {
-  const state = loadState();
-  const sp = { ...emptyPrefs(), ...(state.groupPrefs || {}) };
+function mergePrefs(serverPrefs, cookiePrefs, env) {
+  const sp = { ...emptyPrefs(), ...(serverPrefs || {}) };
   const cp = { ...emptyPrefs(), ...(cookiePrefs || {}) };
   const hasCookiePrefs = Boolean(
     cp.version || cp.setupDone || cp.title || cp.ownerName || (cp.added && cp.added.length) || (cp.removed && cp.removed.length),
@@ -192,7 +302,13 @@ export function mergeGroupPrefs(cookiePrefs, env) {
   };
 }
 
-export function buildCatalog({ env, customAgents, vmCharacters, includeSecrets = false, includeDirectory = false, groupTitle = "" }) {
+export async function mergeGroupPrefs(cookiePrefs, env) {
+  if (isDemoMode(env)) return mergePrefs(emptyPrefs(), cookiePrefs, env);
+  const { prefs } = await readServerPrefs(env);
+  return mergePrefs(prefs, cookiePrefs, env);
+}
+
+export async function buildCatalog({ env, customAgents, vmCharacters, includeSecrets = false, includeDirectory = false, groupTitle = "" }) {
   const sourceEnv = env || process.env;
   if (isDemoMode(sourceEnv)) {
     const demoSet = new Set(DEMO_AGENT_IDS);
@@ -213,9 +329,9 @@ Keep replies brief (1-3 short sentences) in this public demo.`,
       };
     });
   }
-  const state = loadState();
+  const state = await readState(sourceEnv);
   const vmById = new Map((vmCharacters || []).map((c) => [c.id, c]));
-  const combinedCustom = mergeCustomAgents(customAgents);
+  const combinedCustom = mergeAgentLists(state.customAgents, customAgents);
   const dirEntries = includeDirectory ? directoryCharacters(sourceEnv) : [];
   const allRaw = [...BUILTIN_CAST, ...combinedCustom, ...(state.invitedParticipants || []), ...dirEntries];
   const basePeers = allRaw.slice(0, 16);
@@ -247,8 +363,7 @@ Keep replies brief (1-3 short sentences) in this public demo.`,
   });
 }
 
-export function resolveGroupMembers({ catalog, cookiePrefs, vmThreads, env }) {
-  const prefs = mergeGroupPrefs(cookiePrefs, env);
+function membersFrom(prefs, catalog, vmThreads) {
   const removed = new Set(prefs.removed || []);
   const knownIds = new Set((catalog || []).map((c) => c.id));
   const members = ["owner"];
@@ -268,69 +383,80 @@ export function resolveGroupMembers({ catalog, cookiePrefs, vmThreads, env }) {
   return members;
 }
 
-export function updateGroupMember(id, action, cookiePrefs, env) {
-  const state = loadState();
-  const prefs = mergeGroupPrefs(cookiePrefs, env);
-  if (action === "add") {
-    prefs.removed = prefs.removed.filter((item) => item !== id);
-    if (!prefs.added.includes(id)) prefs.added.push(id);
-  } else if (action === "remove") {
-    prefs.added = prefs.added.filter((item) => item !== id);
-    if (!prefs.removed.includes(id)) prefs.removed.push(id);
-  }
-  prefs.version = nextVersion(prefs.version);
-  state.groupPrefs = prefs;
-  saveState(state);
-  return prefs;
+export async function resolveGroupMembers({ catalog, cookiePrefs, vmThreads, env }) {
+  const prefs = await mergeGroupPrefs(cookiePrefs, env);
+  return membersFrom(prefs, catalog, vmThreads);
 }
 
-export function configureGroup({ title, ownerName, members, setupDone, replaceMembers = false }, cookiePrefs, catalog, env) {
-  const state = loadState();
-  const prev = mergeGroupPrefs(cookiePrefs, env);
-  const knownIds = new Set((catalog || []).map((c) => c.id));
-  const nextTitle = title !== undefined
-    ? (String(title || "").trim().slice(0, 60) || getGroupName(env))
-    : prev.title;
-  const nextOwner = ownerName !== undefined
-    ? (String(ownerName || "").trim().slice(0, 40) || getOwnerName(env))
-    : prev.ownerName;
-
-  let added = [...prev.added];
-  let removed = [...prev.removed];
-  if (Array.isArray(members)) {
-    const clean = [];
-    const seen = new Set();
-    for (const raw of members) {
-      const id = String(raw || "").trim();
-      if (!id || id === "owner" || !knownIds.has(id) || seen.has(id)) continue;
-      seen.add(id);
-      clean.push(id);
+export async function updateGroupMember(id, action, cookiePrefs, env) {
+  return writePrefs(cookiePrefs, env, (prev) => {
+    const prefs = { ...prev, added: [...prev.added], removed: [...prev.removed] };
+    if (action === "add") {
+      prefs.removed = prefs.removed.filter((item) => item !== id);
+      if (!prefs.added.includes(id)) prefs.added.push(id);
+    } else if (action === "remove") {
+      prefs.added = prefs.added.filter((item) => item !== id);
+      if (!prefs.removed.includes(id)) prefs.removed.push(id);
     }
-    if (replaceMembers) {
-      added = clean;
-      removed = [];
-    } else {
-      for (const id of clean) {
-        removed = removed.filter((item) => item !== id);
-        if (!added.includes(id)) added.push(id);
+    prefs.version = nextVersion(prefs.version);
+    return prefs;
+  });
+}
+
+export async function configureGroup({ title, ownerName, members, setupDone, replaceMembers = false }, cookiePrefs, catalog, env) {
+  const knownIds = new Set((catalog || []).map((c) => c.id));
+  return writePrefs(cookiePrefs, env, (prev) => {
+    const nextTitle = title !== undefined
+      ? (String(title || "").trim().slice(0, 60) || getGroupName(env))
+      : prev.title;
+    const nextOwner = ownerName !== undefined
+      ? (String(ownerName || "").trim().slice(0, 40) || getOwnerName(env))
+      : prev.ownerName;
+
+    let added = [...prev.added];
+    let removed = [...prev.removed];
+    if (Array.isArray(members)) {
+      const clean = [];
+      const seen = new Set();
+      for (const raw of members) {
+        const id = String(raw || "").trim();
+        if (!id || id === "owner" || !knownIds.has(id) || seen.has(id)) continue;
+        seen.add(id);
+        clean.push(id);
+      }
+      if (replaceMembers) {
+        added = clean;
+        removed = [];
+      } else {
+        for (const id of clean) {
+          removed = removed.filter((item) => item !== id);
+          if (!added.includes(id)) added.push(id);
+        }
       }
     }
-  }
 
-  const prefs = {
-    version: nextVersion(prev.version),
-    title: nextTitle,
-    ownerName: nextOwner,
-    setupDone: setupDone !== undefined ? Boolean(setupDone) : prev.setupDone,
-    added,
-    removed,
-  };
-  state.groupPrefs = prefs;
-  saveState(state);
-  return prefs;
+    return {
+      version: nextVersion(prev.version),
+      title: nextTitle,
+      ownerName: nextOwner,
+      setupDone: setupDone !== undefined ? Boolean(setupDone) : prev.setupDone,
+      added,
+      removed,
+    };
+  });
 }
 
-export function listThreads({ catalog, cookiePrefs, vmThreads, env }) {
+async function lastMessagesByThread(state, env) {
+  if (usesPostgres(env)) return roomStore().lastMessages(ROOM_ID);
+  const out = {};
+  for (const [threadId, msgs] of Object.entries(state.messages || {})) {
+    const last = [...(msgs || [])].reverse().find((m) => m.kind !== "tool" && m.kind !== "card");
+    if (last) out[threadId] = { text: last.text, time: last.time };
+  }
+  return out;
+}
+
+export async function listThreads({ catalog, cookiePrefs, vmThreads, env }) {
   const sourceEnv = env || process.env;
   if (isDemoMode(sourceEnv)) {
     const demoMembers = ["owner", ...(catalog || []).map((c) => c.id)];
@@ -346,11 +472,11 @@ export function listThreads({ catalog, cookiePrefs, vmThreads, env }) {
       last_at: "",
     }];
   }
-  const state = loadState();
-  const prefs = mergeGroupPrefs(cookiePrefs, env);
-  const members = resolveGroupMembers({ catalog, cookiePrefs, vmThreads, env });
-  const guildMsgs = state.messages.guild || [];
-  const lastGuild = [...guildMsgs].reverse().find((m) => m.kind !== "tool" && m.kind !== "card");
+  const state = usesPostgres(sourceEnv) ? await readState(sourceEnv) : loadState();
+  const prefs = mergePrefs(state.groupPrefs, cookiePrefs, env);
+  const members = membersFrom(prefs, catalog, vmThreads);
+  const lastByThread = await lastMessagesByThread(state, sourceEnv);
+  const lastGuild = lastByThread.guild;
   const count = Math.max(members.length - 1, 0);
   const defaultPreview = count === 0
     ? "Empty group — tap + Add / Invite to pick members"
@@ -373,10 +499,10 @@ export function listThreads({ catalog, cookiePrefs, vmThreads, env }) {
   }
   for (const t of state.threads || []) {
     if (t.id !== "guild") {
-      const msgs = state.messages[t.id] || [];
-      const last = [...msgs].reverse().find((m) => m.kind !== "tool" && m.kind !== "card");
+      const last = lastByThread[t.id];
+      const { createdAt, ...thread } = t;
       dmById.set(t.id, {
-        ...t,
+        ...thread,
         last: (last && last.text) || t.last || "",
         last_at: (last && last.time) || t.last_at || "",
       });
@@ -386,7 +512,7 @@ export function listThreads({ catalog, cookiePrefs, vmThreads, env }) {
   return [guildThread, ...dms];
 }
 
-export function openDMThread(characterId, catalog, env) {
+export async function openDMThread(characterId, catalog, env) {
   const c = catalog.find((item) => item.id === characterId);
   if (!c) {
     const err = new Error(`unknown character "${characterId}"`);
@@ -398,6 +524,15 @@ export function openDMThread(characterId, catalog, env) {
   if (isDemoMode(env)) {
     return thread;
   }
+  if (usesPostgres(env)) {
+    const existing = (await roomStore().listThreads(ROOM_ID)).find((t) => t.id === id);
+    if (existing) {
+      const { createdAt, ...rest } = existing;
+      return rest;
+    }
+    await roomStore().upsertThread({ roomId: ROOM_ID, thread });
+    return thread;
+  }
   const state = loadState();
   const existing = (state.threads || []).find((t) => t.id === id);
   if (existing) return existing;
@@ -407,14 +542,15 @@ export function openDMThread(characterId, catalog, env) {
   return thread;
 }
 
-export function appendLine({ threadId, from, text, kind = "message", reasoning = "", tool = "", task = "", assignee = "", card_status = "", files = [], catalog = [], senderName = "", env }) {
+export async function appendLine({ threadId, from, text, kind = "message", reasoning = "", tool = "", task = "", assignee = "", card_status = "", files = [], catalog = [], senderName = "", env }) {
   const demo = isDemoMode(env);
-  const state = demo ? null : loadState();
-  let seq;
+  const durable = !demo && usesPostgres(env);
+  const state = demo || durable ? null : loadState();
+  let seq = 0;
   if (demo) {
     globalThis.__devGuildDemoSeq = (globalThis.__devGuildDemoSeq || 0) + 1;
     seq = globalThis.__devGuildDemoSeq;
-  } else {
+  } else if (!durable) {
     if (!state.messages[threadId]) state.messages[threadId] = [];
     state.seq = (state.seq || 0) + 1;
     seq = state.seq;
@@ -442,6 +578,20 @@ export function appendLine({ threadId, from, text, kind = "message", reasoning =
     card_status: card_status || undefined,
     files: files && files.length ? files : undefined,
   };
+  if (durable) {
+    const { seq: _seq, id: _id, thread: _thread, from: _from, kind: _kind, ...body } = msg;
+    const saved = await roomStore().appendMessage({
+      roomId: ROOM_ID,
+      threadId,
+      from: String(from || "unknown"),
+      kind: bubbleKind || "agent",
+      body: JSON.parse(JSON.stringify(body)),
+    });
+    msg.seq = saved.seq;
+    msg.id = saved.id;
+    msg.time = saved.createdAt || msg.time;
+    return msg;
+  }
   if (!demo) {
     state.messages[threadId] = [...state.messages[threadId], msg];
     saveState(state);
@@ -452,7 +602,7 @@ export function appendLine({ threadId, from, text, kind = "message", reasoning =
 // addReaction toggles one emoji for one actor. Reaction state is keyed by
 // thread and message id, so it survives a reload with the transcript. In demo
 // mode nothing is persisted; the client keeps the reaction for the session.
-export function addReaction({ threadId, messageId, emoji, from = "owner", env, allowMissing = false }) {
+export async function addReaction({ threadId, messageId, emoji, from = "owner", env, allowMissing = false }) {
   const clean = String(emoji || "");
   if (!isReaction(clean)) {
     const err = new Error("unsupported reaction");
@@ -460,6 +610,25 @@ export function addReaction({ threadId, messageId, emoji, from = "owner", env, a
     throw err;
   }
   if (isDemoMode(env)) return { persisted: false, messageId, reactions: [] };
+  if (usesPostgres(env)) {
+    const rs = roomStore();
+    const exists = await rs.hasMessage({ roomId: ROOM_ID, threadId, messageId });
+    if (!exists) {
+      // VM-bridge messages live on the VM; the durable store cannot key a
+      // reaction to a message it does not hold, so the client keeps it.
+      if (allowMissing) return { persisted: false, messageId, reactions: [] };
+      const err = new Error("message not found");
+      err.status = 404;
+      throw err;
+    }
+    const before = await rs.listReactions({ roomId: ROOM_ID, threadId, messageIds: [messageId], viewer: from });
+    const mine = (before[messageId] || []).some((r) => r.emoji === clean && r.mine);
+    const args = { roomId: ROOM_ID, threadId, messageId, emoji: clean, actorId: from };
+    if (mine) await rs.removeReaction(args);
+    else await rs.addReaction(args);
+    const after = await rs.listReactions({ roomId: ROOM_ID, threadId, messageIds: [messageId], viewer: from });
+    return { persisted: true, messageId, reactions: after[messageId] || [] };
+  }
   const state = loadState();
   if (!allowMissing && !(state.messages[threadId] || []).some((m) => m.id === messageId)) {
     const err = new Error("message not found");
@@ -482,14 +651,11 @@ export function addReaction({ threadId, messageId, emoji, from = "owner", env, a
 
 // invitedMessages reads the group with reaction state personalized for the
 // authenticated participant rather than the owner of the browser session.
-export function invitedMessages({ auth, after = 0, env, threadId = "guild" } = {}) {
+export async function invitedMessages({ auth, after = 0, env, threadId = "guild" } = {}) {
   return getMessages(threadId, after, env, viewerIdFromAuth(auth));
 }
 
-export function getMessages(threadId, after = 0, env, viewer = "owner") {
-  if (isDemoMode(env)) return [];
-  const state = loadState();
-  const all = (state.messages[threadId] || []).map((m) => ({ ...m }));
+function markReadStatus(all) {
   let lastOwner = -1;
   all.forEach((m, idx) => {
     if (m.mine) lastOwner = idx;
@@ -498,6 +664,28 @@ export function getMessages(threadId, after = 0, env, viewer = "owner") {
     const read = all.slice(lastOwner + 1).some((m) => !m.mine && m.kind !== "system");
     all[lastOwner].status = read ? "Read" : "Delivered";
   }
+  return all;
+}
+
+export async function getMessages(threadId, after = 0, env, viewer = "owner") {
+  if (isDemoMode(env)) return [];
+  if (usesPostgres(env)) {
+    const rs = roomStore();
+    const rows = await rs.listMessages({ roomId: ROOM_ID, threadId, after: Number(after || 0), limit: 1000 });
+    const all = markReadStatus(rows.map((r) => ({
+      ...(r.body || {}),
+      seq: r.seq,
+      id: r.id,
+      thread: r.threadId,
+      from: r.from,
+      kind: r.kind,
+      time: (r.body && r.body.time) || r.createdAt,
+    })));
+    const reactions = await rs.listReactions({ roomId: ROOM_ID, threadId, messageIds: all.map((m) => m.id), viewer });
+    return all.map((m) => (reactions[m.id] ? { ...m, reactions: reactions[m.id] } : m));
+  }
+  const state = loadState();
+  const all = markReadStatus((state.messages[threadId] || []).map((m) => ({ ...m })));
   return all
     .filter((m) => (m.seq || 0) > Number(after || 0))
     .map((m) => {
