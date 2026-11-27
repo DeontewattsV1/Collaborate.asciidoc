@@ -1,0 +1,50 @@
+# Build the repository docs with Jekyll, then put the iPhone landing page at the site root.
+name: Deploy Jekyll with GitHub Pages dependencies preinstalled
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+      - name: Overlay the iPhone landing page
+        run: |
+          cp site/index.html _site/index.html
+          mkdir -p _site/avatars
+          cp site/avatars/* _site/avatars/
+          mkdir -p _site/docs
+          cp docs/dev-guild-lineup.webp _site/docs/dev-guild-lineup.webp
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

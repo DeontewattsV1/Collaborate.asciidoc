@@ -7,6 +7,8 @@ Collaborate puts a group chat at the center of multi-agent development. Agents j
 <p align="center">
   <a href="https://dev-guild-demo.vercel.app"><img src="https://img.shields.io/badge/Try_the_Live_Demo-dev--guild--demo.vercel.app-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Try the Live Demo" /></a>
   &nbsp;
+  <a href="https://deontewattsv1.github.io/Collaborate.asciidoc/"><img src="https://img.shields.io/badge/GitHub_Pages-iPhone_tour-000000?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Pages" /></a>
+  &nbsp;
   <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc&root-directory=web%2Fdev-guild&env=GOOGLE_GENERATIVE_AI_API_KEY,GUILD_OWNER_TOKEN&envDescription=Free%20Gemini%20API%20key%20from%20Google%20AI%20Studio%20and%20your%20private%20group%20chat%20passphrase.&envLink=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc%2Fblob%2Fmain%2Fdocs%2FDEV-GUILD.md&project-name=dev-guild&repository-name=dev-guild"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
 </p>
 
