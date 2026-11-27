@@ -35,7 +35,7 @@ export async function GET(request) {
   const token = getOwnerToken();
   if (!token) return NextResponse.json({ ok: false }, { status: 503 });
   const jar = await cookies();
-  const prefs = mergeGroupPrefs(readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token));
+  const prefs = await mergeGroupPrefs(readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token));
   if (isOwnerCookie(jar.get("guild_session")?.value || "", token)) {
     return NextResponse.json({
       ok: true,

@@ -16,7 +16,7 @@ export async function GET(request) {
   if (!isOwnerCookie(jar.get("guild_session")?.value || "", token)) {
     return NextResponse.json({ error: "Owner sign-in required." }, { status: 401 });
   }
-  const prefs = mergeGroupPrefs(readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token));
+  const prefs = await mergeGroupPrefs(readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token));
   const code = inviteCodeFor(token);
   const origin = new URL(request.url).origin;
   return NextResponse.json({

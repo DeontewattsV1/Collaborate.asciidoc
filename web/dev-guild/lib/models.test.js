@@ -213,27 +213,27 @@ import {
 } from "./auth.js";
 import { buildCatalog, configureGroup, getMessages, listThreads, resetStoreForTest } from "./store.js";
 
-test("built-in cast includes all 11 agents, 43 tool mascots, and 8 free presets with no hardcoded owner", () => {
+test("built-in cast includes all 11 agents, 43 tool mascots, and 8 free presets with no hardcoded owner", async () => {
   resetStoreForTest();
   assert.equal(BUILTIN_AGENTS.length, 11);
   assert.equal(BUILTIN_TOOLS.length, 43);
   assert.equal(FREE_PRESETS.length, 8);
   assert.equal(BUILTIN_CAST.length, 62);
-  const catalog = buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } });
+  const catalog = await buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } });
   assert.equal(catalog.length, 62);
   assert.equal(JSON.stringify(catalog).includes("Deonte"), false);
 });
 
-test("first-run deploy starts empty and supports custom group name and picked members", () => {
+test("first-run deploy starts empty and supports custom group name and picked members", async () => {
   resetStoreForTest();
-  const catalog = buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } });
-  const initial = listThreads({ catalog, env: {} }).find((t) => t.id === "guild");
+  const catalog = await buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } });
+  const initial = (await listThreads({ catalog, env: {} })).find((t) => t.id === "guild");
   assert.ok(initial && initial.group);
   assert.equal(initial.setupDone, false);
   assert.equal(initial.title, "Dev Guild");
   assert.equal(initial.ownerName, "Owner");
   assert.deepEqual(initial.members, ["owner"]);
-  assert.equal(getMessages("guild", 0).length, 0);
+  assert.equal((await getMessages("guild", 0)).length, 0);
 
   const emptySpeakers = planSpeakers({
     members: initial.members,
@@ -244,7 +244,7 @@ test("first-run deploy starts empty and supports custom group name and picked me
   });
   assert.deepEqual(emptySpeakers, []);
 
-  const prefs = configureGroup(
+  const prefs = await configureGroup(
     {
       title: "Backend Crew",
       ownerName: "Alex",
@@ -263,7 +263,7 @@ test("first-run deploy starts empty and supports custom group name and picked me
   assert.equal(roundTrip.setupDone, true);
   assert.deepEqual(roundTrip.added, ["claude", "grok"]);
 
-  const configured = listThreads({ catalog, cookiePrefs: roundTrip, env: {} }).find((t) => t.id === "guild");
+  const configured = (await listThreads({ catalog, cookiePrefs: roundTrip, env: {} })).find((t) => t.id === "guild");
   assert.equal(configured.title, "Backend Crew");
   assert.equal(configured.ownerName, "Alex");
   assert.equal(configured.setupDone, true);
@@ -280,7 +280,7 @@ test("first-run deploy starts empty and supports custom group name and picked me
     removed: [],
   };
   const clearedCookie = readGroupPrefs(sealGroupPrefs(clearedPrefs, token), token);
-  const afterReplace = listThreads({ catalog, cookiePrefs: clearedCookie, env: {} }).find((t) => t.id === "guild");
+  const afterReplace = (await listThreads({ catalog, cookiePrefs: clearedCookie, env: {} })).find((t) => t.id === "guild");
   assert.deepEqual(afterReplace.members, ["owner"]);
 });
 
@@ -300,7 +300,7 @@ test("free presets activate only when their free key is set and show needs key o
   assert.equal(attemptsFor(envWithGroq, groqPreset.id, groqPreset)[0].provider, "groq");
 });
 
-test("custom agent API key stays encrypted in cookie and never leaks in catalog", () => {
+test("custom agent API key stays encrypted in cookie and never leaks in catalog", async () => {
   const token = "test-owner-token-123";
   const secretAgent = {
     id: "nova",
@@ -316,7 +316,7 @@ test("custom agent API key stays encrypted in cookie and never leaks in catalog"
   const restored = decryptCustomAgents(sealed, token);
   assert.equal(restored[0].apiKey, "sk-super-secret-value");
 
-  const publicCatalog = buildCatalog({ env: {}, customAgents: restored, includeSecrets: false });
+  const publicCatalog = await buildCatalog({ env: {}, customAgents: restored, includeSecrets: false });
   const nova = publicCatalog.find((c) => c.id === "nova");
   assert.ok(nova);
   assert.equal(nova.hasKey, true);
@@ -368,7 +368,7 @@ import { appendLine } from "./store.js";
 import { directoryCharacters } from "./directory.js";
 import { checkDemoAutoLimit, checkDemoRateLimit, DEMO_AGENT_IDS } from "./demo.js";
 
-test("directoryCharacters provides ~500 contacts across 17 sections with webp coding-agent avatars", () => {
+test("directoryCharacters provides ~500 contacts across 17 sections with webp coding-agent avatars", async () => {
   const dir = directoryCharacters({ GOOGLE_GENERATIVE_AI_API_KEY: "test" });
   assert.ok(dir.length >= 450, `expected >= 450 directory entries, got ${dir.length}`);
   const coding = dir.filter((c) => c.section === "AI coding agents");
@@ -378,13 +378,13 @@ test("directoryCharacters provides ~500 contacts across 17 sections with webp co
     assert.equal(agent.isPersona, true);
     assert.equal(agent.online, true);
   }
-  const full = buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "test" }, includeDirectory: true });
+  const full = await buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "test" }, includeDirectory: true });
   assert.ok(full.length >= 500, `expected >= 500 total catalog contacts, got ${full.length}`);
 });
 
-test("GUILD_DEMO=1 restricts catalog, forces gemini-3.5-flash-lite, and never persists messages", () => {
+test("GUILD_DEMO=1 restricts catalog, forces gemini-3.5-flash-lite, and never persists messages", async () => {
   const demoEnv = { GUILD_DEMO: "1", GOOGLE_GENERATIVE_AI_API_KEY: "demo-key" };
-  const demoCatalog = buildCatalog({ env: demoEnv, includeDirectory: true });
+  const demoCatalog = await buildCatalog({ env: demoEnv, includeDirectory: true });
   assert.deepEqual(demoCatalog.map((c) => c.id).sort(), [...DEMO_AGENT_IDS].sort());
 
   const attempts = attemptsFor(demoEnv, "claude");
@@ -393,9 +393,9 @@ test("GUILD_DEMO=1 restricts catalog, forces gemini-3.5-flash-lite, and never pe
   assert.equal(checkGuildAuth({ jar: null, token: "", env: demoEnv }).ok, true);
   assert.equal(checkGuildAuth({ jar: null, token: "", env: demoEnv }).role, "demo");
 
-  const line = appendLine({ threadId: "guild", from: "owner", name: "Visitor", text: "Hi demo", env: demoEnv });
+  const line = await appendLine({ threadId: "guild", from: "owner", name: "Visitor", text: "Hi demo", env: demoEnv });
   assert.equal(line.text, "Hi demo");
-  assert.deepEqual(getMessages({ threadId: "guild", env: demoEnv }), []);
+  assert.deepEqual(await getMessages({ threadId: "guild", env: demoEnv }), []);
 });
 
 test("demo rate limits enforce 10 user msgs/hr and autonomous IP/daily budgets", () => {

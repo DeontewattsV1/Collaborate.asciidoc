@@ -60,29 +60,29 @@ test("reaction allowlist and summaries are deterministic", () => {
   ]);
 });
 
-test("a reaction toggles on and off and rides along with the message", () => {
+test("a reaction toggles on and off and rides along with the message", async () => {
   resetStoreForTest();
-  const msg = appendLine({ threadId: "guild", from: "claude", text: "Small diff.", catalog: [] });
-  const on = addReaction({ threadId: "guild", messageId: msg.id, emoji: "🎉" });
+  const msg = await appendLine({ threadId: "guild", from: "claude", text: "Small diff.", catalog: [] });
+  const on = await addReaction({ threadId: "guild", messageId: msg.id, emoji: "🎉" });
   assert.equal(on.persisted, true);
   assert.deepEqual(on.reactions, [{ emoji: "🎉", count: 1, mine: true }]);
-  assert.deepEqual(getMessages("guild", 0)[0].reactions, [{ emoji: "🎉", count: 1, mine: true }]);
+  assert.deepEqual((await getMessages("guild", 0))[0].reactions, [{ emoji: "🎉", count: 1, mine: true }]);
 
-  const off = addReaction({ threadId: "guild", messageId: msg.id, emoji: "🎉" });
+  const off = await addReaction({ threadId: "guild", messageId: msg.id, emoji: "🎉" });
   assert.deepEqual(off.reactions, []);
-  assert.equal(getMessages("guild", 0)[0].reactions, undefined);
+  assert.equal((await getMessages("guild", 0))[0].reactions, undefined);
 
-  assert.throws(() => addReaction({ threadId: "guild", messageId: msg.id, emoji: "🍕" }), /unsupported/);
-  assert.throws(() => addReaction({ threadId: "guild", messageId: "m_missing", emoji: "👍" }), /not found/);
+  await assert.rejects(() => addReaction({ threadId: "guild", messageId: msg.id, emoji: "🍕" }), /unsupported/);
+  await assert.rejects(() => addReaction({ threadId: "guild", messageId: "m_missing", emoji: "👍" }), /not found/);
 });
 
-test("an invited agent sees its own reaction, not the owner's", () => {
+test("an invited agent sees its own reaction, not the owner's", async () => {
   resetStoreForTest();
-  const msg = appendLine({ threadId: "guild", from: "claude", text: "Small diff.", catalog: [] });
-  addReaction({ threadId: "guild", messageId: msg.id, emoji: "🎉", from: "owner" });
-  addReaction({ threadId: "guild", messageId: msg.id, emoji: "👍", from: "review-bot" });
+  const msg = await appendLine({ threadId: "guild", from: "claude", text: "Small diff.", catalog: [] });
+  await addReaction({ threadId: "guild", messageId: msg.id, emoji: "🎉", from: "owner" });
+  await addReaction({ threadId: "guild", messageId: msg.id, emoji: "👍", from: "review-bot" });
 
-  const forAgent = invitedMessages({
+  const forAgent = await invitedMessages({
     auth: { role: "invite", participant: { id: "review-bot", name: "Review Bot" } },
   });
   assert.deepEqual(forAgent[0].reactions, [
@@ -90,7 +90,7 @@ test("an invited agent sees its own reaction, not the owner's", () => {
     { emoji: "🎉", count: 1, mine: false },
   ]);
 
-  const forOwner = invitedMessages({ auth: { role: "owner", participant: { id: "owner" } } });
+  const forOwner = await invitedMessages({ auth: { role: "owner", participant: { id: "owner" } } });
   assert.deepEqual(forOwner[0].reactions, [
     { emoji: "👍", count: 1, mine: false },
     { emoji: "🎉", count: 1, mine: true },
@@ -101,8 +101,8 @@ test("an invited agent sees its own reaction, not the owner's", () => {
   assert.equal(viewerIdFromAuth(null), "guest");
 });
 
-test("demo reactions never persist", () => {
-  const result = addReaction({ threadId: "guild", messageId: "m_1_abc", emoji: "👍", env: { GUILD_DEMO: "1" } });
+test("demo reactions never persist", async () => {
+  const result = await addReaction({ threadId: "guild", messageId: "m_1_abc", emoji: "👍", env: { GUILD_DEMO: "1" } });
   assert.equal(result.persisted, false);
   assert.deepEqual(result.reactions, []);
 });

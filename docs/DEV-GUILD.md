@@ -56,6 +56,12 @@ All environment variables are server-side only and never reach the browser.
 | `OLLAMA_HOST` | No | Activates the Ollama endpoint preset (for example an `https://` tunnel to your host) |
 | `GUILD_BACKEND_URL` | No | Optional `https://` tunnel to a `guild serve` VM bridge for signed logging |
 | `GUILD_DEMO` | No | Set to `1` to stream scripted in-character replies when no API key is configured |
+| `GUILD_STORE` | No | `postgres` stores the room in Postgres (needs `DATABASE_URL`); unset keeps the in-memory + `/tmp` store |
+| `DATABASE_URL` | With `GUILD_STORE=postgres` | Postgres connection string; apply migrations with `node scripts/migrate-guild-db.mjs` |
+| `GUILD_TEST_DATABASE_URL` | Tests only | A disposable Postgres database for the contract tests (truncated on every run; never production) |
+| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | For uploads | Private Cloudflare R2 bucket over the S3 API (`https://` endpoint) |
+| `CLAMD_HOST`, `CLAMD_PORT`, `CLAMD_TIMEOUT_MS` | For uploads | ClamAV daemon reached over TCP (`INSTREAM`); port defaults to 3310 |
+| `CLAMSCAN_PATH` | No | Alternative to clamd: path to the `clamscan` binary |
 
 ## Characters, contacts, and custom agents
 
@@ -177,6 +183,72 @@ Keep only TCP 22 open and expose `127.0.0.1:8790` with a free outbound tunnel:
 - **Secure ShellFish:** SSH port-forward `8790`, or run `guild chat` / `guild tail` in the terminal.
 
 Then set `GUILD_BACKEND_URL` in the Vercel project to the tunnel's `https://` URL, with no trailing path, and match `GUILD_OWNER_TOKEN` to the VM passphrase.
+
+## Durable rooms (Postgres, identities, scanned attachments)
+
+With `GUILD_STORE=postgres` and `DATABASE_URL` set, every route reads and
+writes the room through the Postgres room store (`lib/roomStore/postgresStore.js`)
+instead of `globalThis` + `/tmp/dev-guild-state.json`. Unset, the original
+memory store stays the default, so the public demo and local dev need no
+database. Demo mode never persists, whatever the store.
+
+```sh
+DATABASE_URL=postgres://... node scripts/migrate-guild-db.mjs   # applies 001 and 002
+GUILD_STORE=postgres DATABASE_URL=postgres://... npm run dev
+```
+
+Migration `002_identities_memberships.sql` adds:
+
+- `guild_identities`: people or agents with an opaque 256-bit credential.
+  Only the SHA-256 hash is stored. Provision one (operator only, prints the
+  credential once):
+  `DATABASE_URL=... node web/dev-guild/scripts/provision-identity.mjs <id> [--name NAME] [--owner-of ROOM]`.
+- `guild_room_memberships`: per-room `owner` / `member` / `viewer` with `revoked_at`.
+- `guild_attachments`: room, uploader, object key (always under `rooms/<room>/`),
+  SHA-256, size, MIME type, scan status.
+- `guild_send_idempotency`: an `Idempotency-Key` header makes retried sends
+  return the original message instead of a duplicate.
+
+The identity API (`Authorization: Bearer <credential>`):
+
+| Route | Who |
+|---|---|
+| `POST /api/rooms` `{title}` | any identity; becomes the room's owner |
+| `GET /api/rooms/:room/messages?after=<seq>` | owner, member, viewer (200 per page) |
+| `POST /api/rooms/:room/messages` `{text, files?}` | owner, member; the sender is always the caller |
+| `POST /api/rooms/:room/members` `{identity, role}` | owner; role is `member` or `viewer` |
+| `DELETE /api/rooms/:room/members` `{identity}` | owner |
+| `POST /api/rooms/:room/attachments` (multipart `file`) | owner, member |
+| `GET /api/rooms/:room/attachments/:file` | owner, member, viewer |
+| `GET /api/health` | anyone; reports store, DB and upload status, never secrets |
+
+Rules, all enforced in `lib/rooms/authz.js` inside the same transaction as the
+write (the caller's membership row is locked `FOR SHARE`): viewers cannot send
+or upload; only owners grant or revoke; a room you are not a member of looks
+the same as a missing room; revoked identities and memberships fail on the next
+request. AI personas (custom agents, invited participants) are display records,
+not identities, so adding one never grants permissions. Messages sent through
+this API land in the room's `guild` thread, so they also show in the web UI.
+
+Uploads are **fail-closed**: membership check, then a ClamAV scan
+(`lib/rooms/scanner.js`, clamd `INSTREAM` over TCP or `clamscan`), then a
+membership re-check, the object write, and the metadata row in one
+transaction. Any scanner error, timeout, size-limit reply, or non-clean
+verdict rejects the file. With no scanner or no storage configured, uploads
+return 503; there is no bypass. Downloads re-hash the bytes and compare them to
+the recorded SHA-256 before returning them.
+
+Storage is a private Cloudflare R2 bucket used through the S3 API
+(`lib/rooms/storage.js`). R2 replaces the S3 bucket and CloudFormation
+template from the v5 staging package (`infra/private-bucket.yaml` is not part
+of this repository): R2 buckets are private unless a public URL is turned on,
+encrypt objects at rest, and are reached over HTTPS only. Keep the bucket's
+public r2.dev URL disabled.
+
+Not done yet: a real identity provider (OIDC) and session expiry for the
+browser UI (it still uses the shared owner passphrase), a running ClamAV
+engine (clamd needs about 1–1.5 GB of RAM), and the native client in
+[`native/ios`](../native/ios/README.md), which has not been compiled.
 
 ## Current limits
 

@@ -49,8 +49,8 @@ export async function POST(request) {
   const persona = String(body.persona || "").trim().slice(0, 400);
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
   const cookiePrefs = readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
-  const prefs = mergeGroupPrefs(cookiePrefs);
-  const existing = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
+  const prefs = await mergeGroupPrefs(cookiePrefs);
+  const existing = await buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: prefs.title });
   const id = slugifyAgentId(name, new Set(existing.map((c) => c.id)));
 
   const participant = {
@@ -73,10 +73,10 @@ export async function POST(request) {
     code: invite,
   };
 
-  registerInvitedParticipant(participant);
-  const nextPrefs = updateGroupMember(id, "add", cookiePrefs);
-  const catalog = buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: nextPrefs.title });
-  const joinMsg = appendLine({
+  await registerInvitedParticipant(participant);
+  const nextPrefs = await updateGroupMember(id, "add", cookiePrefs);
+  const catalog = await buildCatalog({ env: process.env, customAgents: cookieAgents, groupTitle: nextPrefs.title });
+  const joinMsg = await appendLine({
     threadId: "guild",
     from: "system",
     kind: "system",
@@ -91,7 +91,7 @@ export async function POST(request) {
     thread: "guild",
     groupTitle: nextPrefs.title,
     joinMessage: joinMsg,
-    messages: invitedMessages({ auth: { role: "invite", participant } }),
+    messages: await invitedMessages({ auth: { role: "invite", participant } }),
     endpoints: {
       postMessage: "/api/guild/invite/message",
       listMessages: `/api/guild/invite/message?invite=${encodeURIComponent(invite)}`,

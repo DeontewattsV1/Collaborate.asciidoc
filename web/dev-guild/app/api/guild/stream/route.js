@@ -67,8 +67,8 @@ function buildStandaloneTools({ threadId, from, known, catalog, token, send }) {
       description: "Read the latest lines in this thread.",
       inputSchema: jsonSchema({ type: "object", properties: {}, additionalProperties: false }),
       execute: async () => {
-        const lines = getMessages(threadId, 0).slice(-8);
-        const msg = appendLine({
+        const lines = (await getMessages(threadId, 0)).slice(-8);
+        const msg = await appendLine({
           threadId,
           from,
           kind: "tool",
@@ -98,7 +98,7 @@ function buildStandaloneTools({ threadId, from, known, catalog, token, send }) {
       execute: async (args) => {
         const checked = validateHandoff(args, known);
         if (!checked.ok) return { error: checked.error };
-        const toolMsg = appendLine({
+        const toolMsg = await appendLine({
           threadId,
           from,
           kind: "tool",
@@ -107,7 +107,7 @@ function buildStandaloneTools({ threadId, from, known, catalog, token, send }) {
           catalog,
         });
         send("tool", { from, name: "handoff", summary: `Handed to @${checked.card.assignee}`, message: toolMsg });
-        const cardMsg = appendLine({
+        const cardMsg = await appendLine({
           threadId,
           from,
           kind: "card",
@@ -218,14 +218,14 @@ export async function POST(request) {
 
   const cookieAgents = demo ? [] : decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
   const cookiePrefs = demo ? null : readGroupPrefs(jar.get("guild_group_prefs")?.value || "", token);
-  const prefs = mergeGroupPrefs(cookiePrefs);
+  const prefs = await mergeGroupPrefs(cookiePrefs);
   const [vmChars, vmThreads] = demo
     ? [null, null]
     : await Promise.all([
         mirrorVm(token, "GET", "/v1/characters"),
         mirrorVm(token, "GET", "/v1/threads"),
       ]);
-  const catalog = buildCatalog({
+  const catalog = await buildCatalog({
     env: process.env,
     customAgents: cookieAgents,
     vmCharacters: vmChars && vmChars.characters,
@@ -233,7 +233,7 @@ export async function POST(request) {
     includeDirectory: true,
     groupTitle: prefs.title,
   });
-  const threads = listThreads({
+  const threads = await listThreads({
     catalog,
     cookiePrefs,
     vmThreads: vmThreads && vmThreads.threads,
@@ -252,7 +252,7 @@ export async function POST(request) {
       : (auth.participant && auth.participant.name) || "Guest";
   const ownerMessage = autonomous
     ? null
-    : appendLine({
+    : await appendLine({
         threadId,
         from: senderId,
         senderName,
@@ -310,7 +310,7 @@ export async function POST(request) {
             if (event.event === "reasoning") summary = event.data.summary;
             send(event.event, event.data);
           }
-          const msg = appendLine({
+          const msg = await appendLine({
             threadId,
             from,
             text: say.trim(),
@@ -328,7 +328,7 @@ export async function POST(request) {
         }
 
         if (queue.length === 0 && thread.group && (thread.members || []).filter((m) => m !== "owner").length === 0) {
-          const hint = appendLine({
+          const hint = await appendLine({
             threadId,
             from: "system",
             kind: "system",
@@ -354,7 +354,7 @@ export async function POST(request) {
           if (!character) continue;
 
           if (!character.online) {
-            const sys = appendLine({
+            const sys = await appendLine({
               threadId,
               from: "system",
               kind: "system",
@@ -369,7 +369,7 @@ export async function POST(request) {
           const ordered = attemptsFor(process.env, id, character);
           if (!ordered.length) {
             if (character.id === "operator") {
-              const opMsg = appendLine({
+              const opMsg = await appendLine({
                 threadId,
                 from: "operator",
                 text: "The log has it. Model keys are unset on this server right now.",
@@ -452,7 +452,7 @@ export async function POST(request) {
             if (!say.trim()) continue;
             const summary = summaryOnly(thought);
             if (summary) send("reasoning", { from: id, summary });
-            const msg = appendLine({
+            const msg = await appendLine({
               threadId,
               from: id,
               text: say.trim(),
@@ -476,7 +476,7 @@ export async function POST(request) {
           }
 
           if (!spoken) {
-            const errMsg = appendLine({
+            const errMsg = await appendLine({
               threadId,
               from: "system",
               kind: "system",
