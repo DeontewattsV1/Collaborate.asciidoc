@@ -30,11 +30,11 @@ jobs:
           destination: ./_site
       - name: Overlay the iPhone landing page
         run: |
-          cp site/index.html _site/index.html
-          mkdir -p _site/avatars
-          cp site/avatars/* _site/avatars/
-          mkdir -p _site/docs
-          cp docs/dev-guild-lineup.webp _site/docs/dev-guild-lineup.webp
+          sudo cp site/index.html _site/index.html
+          sudo mkdir -p _site/avatars
+          sudo cp site/avatars/* _site/avatars/
+          sudo mkdir -p _site/docs
+          sudo cp docs/dev-guild-lineup.webp _site/docs/dev-guild-lineup.webp
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
 
