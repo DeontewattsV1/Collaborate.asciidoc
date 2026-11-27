@@ -1,0 +1,50 @@
+/* Collaborate / The Dev Guild brand tokens (proposed v1.0). See docs/BRAND.md. */
+/* Every text pair below meets WCAG 2.2 AA (at least 4.5:1). */
+
+:root {
+  /* Light (Parchment) */
+  --brand-bg: #F5EBDD;
+  --brand-surface: #FFFFFF;
+  --brand-text: #090E20;
+  --brand-identity: #7A5C14;   /* who: names, crests, house badges */
+  --brand-action: #0A62C4;     /* buttons, outgoing bubble (white text 5.9:1) */
+  --brand-on-action: #FFFFFF;
+  --brand-ai: #6D4FD8;         /* AI content and model markers */
+  --brand-link: #08677F;
+  --brand-verified: #1A6B47;
+  --brand-danger: #C2333B;
+
+  --font-ceremonial: "Cinzel", Georgia, serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --track-wordmark: 0.10em;
+  --track-display: 0.025em;
+
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px; --space-9: 96px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --brand-bg: #090E20;         /* Midnight Realm */
+    --brand-surface: #15213B;    /* Guild Navy */
+    --brand-text: #F5EBDD;
+    --brand-identity: #EBC66E;   /* Royal Gold */
+    --brand-ai: #A78BFA;         /* Arcane Violet */
+    --brand-link: #61DBF5;       /* Cyber Cyan */
+    --brand-verified: #69D9A6;   /* Emerald Forge */
+    --brand-danger: #FF777E;     /* Ember Red */
+  }
+}
+
+:root[data-theme="dark"] {
+  --brand-bg: #090E20;
+  --brand-surface: #15213B;
+  --brand-text: #F5EBDD;
+  --brand-identity: #EBC66E;
+  --brand-ai: #A78BFA;
+  --brand-link: #61DBF5;
+  --brand-verified: #69D9A6;
+  --brand-danger: #FF777E;
+}

@@ -165,6 +165,7 @@ The verified properties and the remaining gaps are documented in [`SECURITY.md`]
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Prototype security boundary |
 | [`docs/DEV-GUILD.md`](docs/DEV-GUILD.md) | Group chat setup, characters, models, and invites |
 | [`docs/GUILD-DIRECTORY.md`](docs/GUILD-DIRECTORY.md) | Every directory contact and how it joins |
+| [`docs/BRAND.md`](docs/BRAND.md) | Brand system: names, voice, color, type, and the guild houses (proposed) |
 | [`docs/AGENT-TERMINAL.md`](docs/AGENT-TERMINAL.md) | Shared terminal protocol and limits |
 | [`docs/GITHUB-AGENTS.md`](docs/GITHUB-AGENTS.md) | PR coordination for any AI platform |
 | [`docs/AGENT-REGISTRY.md`](docs/AGENT-REGISTRY.md) | Identity and branch-prefix registry |
