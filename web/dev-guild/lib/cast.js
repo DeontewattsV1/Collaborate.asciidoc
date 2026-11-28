@@ -1,6 +1,13 @@
 // Full Dev Guild cast (11 agents + 43 tool mascots) plus free public AI presets
 // and helpers for system prompts and status. Keys are read server-side only.
 
+// The 18 guild houses from docs/BRAND.md. Every card's house must be one of these.
+export const GUILD_HOUSES = [
+  "Codewrights", "Model Mages", "Seekers", "Portal Engineers", "Orchestrators", "Archivists",
+  "Sentinels", "Skywrights", "Data Keepers", "Contract Artisans", "Watchers", "Clockwork Guild",
+  "Keykeepers", "Heralds", "Chain Cartographers", "Scholars", "Media Artisans", "Companions",
+];
+
 export const BUILTIN_AGENTS = [
   {
     id: "claude", name: "Claude", kind: "agent", color: "#7C6AF7", avatar: "claude.webp",
@@ -182,11 +189,61 @@ const TOOL_ROWS = [
   ["sqlite", "SQLite", "#93C5FD", "A snail with a shell of blue disks and a quill.", "Slow-spoken, certain, fond of one file.", "Taps the shell.", "One file, and I mean it.", "The guild's one-file database.", "Tells PostgreSQL the transcript is a JSONL log on purpose. One file you can verify.", "Embedded storage."],
 ];
 
-export const BUILTIN_TOOLS = TOOL_ROWS.map(([id, name, color, look, voice, quirk, catchphrase, role, talks, expertise]) => ({
-  id, name, kind: "tool", color, avatar: `${id}.png`,
-  look, voice, quirk, catchphrase, role, talks, expertise,
-  enable: "Speaks via Free Gemini house key or any VM model key.",
-}));
+// Guild cards for the tool mascots (docs/BRAND.md). [house, title, creature, item, traits]
+const TOOL_CARDS = {
+  docker: ["Skywrights", "The Container Whale", "Blue whale", "A stack of shipping containers", ["Practical", "Splashy"]],
+  git: ["Sentinels", "The History Keeper", "Orange tree sprite", "Glowing commit fruit", ["Careful", "Exact"]],
+  python: ["Companions", "The Twin-Serpent Scribe", "Two snakes, blue and gold", "One shared scroll", ["Readable", "Patient"]],
+  rust: ["Companions", "The Borrow Warden", "Crab", "A gear, a hammer, and a lock shield", ["Firm", "Calm"]],
+  postgresql: ["Data Keepers", "The Keeper of Rows", "Violet elephant", "Spectacles and a SELECT scroll", ["Dignified", "Specific"]],
+  "codex-cloud": ["Codewrights", "The Cloud Runner", "Blue cloud bot", "A glowing visor and a book", ["Literal", "Operational"]],
+  github: ["Sentinels", "The Forge Herald", "Hooded octocat", "The mark of the forge", ["Proud", "Ceremonial"]],
+  kubernetes: ["Skywrights", "The Desired-State Captain", "Blue octopus", "A ship's wheel and orbiting cubes", ["Steady", "Nautical"]],
+  redis: ["Data Keepers", "The Quick Cache", "Red squirrel", "A satchel of books and a pocket watch", ["Quick", "Honest"]],
+  terraform: ["Skywrights", "The City Planner", "Block golem", "A rolled city plan", ["Methodical", "Quiet"]],
+  react: ["Companions", "The Component Fairy", "Bright blue fairy", "A component card", ["Light", "Structured"]],
+  nginx: ["Skywrights", "The Gate Conductor", "Green fox", "A conductor's cap and two glow batons", ["Polite", "Immovable"]],
+  go: ["Companions", "The Paper-Boat Gopher", "Blue gopher", "Aviator goggles and paper boats", ["Clear", "Brief"]],
+  linux: ["Companions", "The Keeper of the Box", "Penguin in a green cloak", "Keys at the belt and a kettle", ["Dry", "Protective"]],
+  firefox: ["Companions", "The Reader's Fox", "Fox curled around a world", "A small blue world", ["Independent", "Fiery"]],
+  mongodb: ["Data Keepers", "The Document Pangolin", "Leaf pangolin", "Document cards", ["Friendly", "Flexible"]],
+  typescript: ["Companions", "The Type Owl", "Blue owl", "A TS cap and a magnifying glass", ["Exact", "Kindly"]],
+  vscode: ["Companions", "The Lamp-Lit Mechanic", "Blue rabbit mechanic", "A toolbox and a glowing manual", ["Helpful", "Ready"]],
+  huggingface: ["Model Mages", "The Weight Gardener", "Sunflower", "A satchel of tiny model faces", ["Sunny", "Welcoming"]],
+  pytorch: ["Model Mages", "The Tensor Flame", "Flame-fox", "A small glowing globe", ["Eager", "Hands-on"]],
+  tensorflow: ["Model Mages", "The Graph Bee", "Bee with graph-paper wings", "Floating cubes", ["Orderly", "Buzzy"]],
+  jupyter: ["Scholars", "The Notebook Moth", "Moth in glasses", "An open notebook of charts", ["Curious", "Nocturnal"]],
+  langchain: ["Orchestrators", "The Chain Weaver", "Green chameleon", "Clipped-together tool cards", ["Connective", "Proud"]],
+  javascript: ["Companions", "The Brace Juggler", "Yellow gecko", "Glowing braces", ["Quick", "Cheerful"]],
+  nodejs: ["Companions", "The Server-Shell Turtle", "Turtle", "A shell of servers and a green hex", ["Steady", "Unimpressed"]],
+  npm: ["Companions", "The Lockfile Crab", "Crab under boxes", "A box labeled npm", ["Fussy", "Tidy"]],
+  vite: ["Companions", "The Prism Hummingbird", "Hummingbird", "Prism wings and a lightning cube", ["Fast", "Light"]],
+  vue: ["Companions", "The Template Stag", "Geometric green deer", "Picture-frame antlers", ["Approachable", "Calm"]],
+  svelte: ["Companions", "The Ribbon Spider", "Orange spider", "A glowing ribbon", ["Spare", "Pleased"]],
+  deno: ["Companions", "The Permission Keeper", "Small teal dinosaur", "A cape and a ring of locks", ["Polite", "Modern"]],
+  bun: ["Companions", "The Quick-Start Bunny", "White bunny", "A cart of packages", ["Zippy", "Competitive"]],
+  graphql: ["Contract Artisans", "The Query Jellyfish", "Jellyfish", "Query-shaped tentacles", ["Precise", "Restrained"]],
+  supabase: ["Data Keepers", "The Hosted Sprite", "Green sprite", "A battery pack and a key", ["Helpful", "Careful"]],
+  playwright: ["Portal Engineers", "The Browser Director", "Raccoon director", "A clapper and little browser faces", ["Theatrical", "Thorough"]],
+  selenium: ["Portal Engineers", "The Grid Veteran", "Green mantis", "Browser-window wings", ["Patient", "Accurate"]],
+  jest: ["Contract Artisans", "The Red-Green Jester", "Jester hedgehog", "A checklist with a check and an x", ["Upbeat", "Rigorous"]],
+  vitest: ["Contract Artisans", "The Stopwatch Ferret", "Ferret in goggles", "A stopwatch and a check", ["Spry", "Modern"]],
+  cypress: ["Portal Engineers", "The Watching Tree", "Little tree with a face", "Circling browsers", ["Grounded", "Visual"]],
+  "github-actions": ["Clockwork Guild", "The Pipeline Bell", "Badger engineer", "A bell and a pipeline of nodes", ["Dutiful", "Loud"]],
+  airflow: ["Clockwork Guild", "The DAG Heron", "Heron in goggles", "A DAG of colored nodes", ["Scheduled", "Precise"]],
+  kafka: ["Heralds", "The Offset Raven", "Dark raven", "Numbered envelopes", ["Serious", "Ordered"]],
+  duckdb: ["Data Keepers", "The File Analyst", "Duck in glasses", "An SQL book and a database satchel", ["Analytical", "Cozy"]],
+  sqlite: ["Data Keepers", "The One-File Snail", "Snail", "A shell of blue disks and a quill", ["Certain", "Slow-spoken"]],
+};
+export const BUILTIN_TOOLS = TOOL_ROWS.map(([id, name, color, look, voice, quirk, catchphrase, role, talks, expertise]) => {
+  const [house, title, creature, item, traits] = TOOL_CARDS[id] || [];
+  return {
+    id, name, kind: "tool", color, avatar: `${id}.png`,
+    look, voice, quirk, catchphrase, role, talks, expertise,
+    enable: "Speaks via Free Gemini house key or any VM model key.",
+    ...(house ? { card: { house, title, creature, item, traits } } : {}),
+  };
+});
 
 // Free public AI API presets (no paid providers).
 // Each preset activates strictly when its free-tier key/endpoint env var is set.
