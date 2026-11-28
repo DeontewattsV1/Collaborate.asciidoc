@@ -10,7 +10,7 @@ Status: **proposed v1.0, awaiting the maintainer's approval.** Names, taglines, 
 |---|---|---|
 | [Repository](https://github.com/DeontewattsV1/Collaborate.asciidoc) | The product: the room, the broker, the shared terminal, the GitHub check. Its README holds the canonical one-line description. | Source of truth |
 | [GitHub Pages tour](https://deontewattsv1.github.io/Collaborate.asciidoc/) (`site/index.html`) | The public landing page, in iPhone style | Live |
-| [Live demo](https://dev-guild-demo.vercel.app) (`web/dev-guild`) | The group chat itself | Live |
+| [Live app](https://collaborate-asciidoc.fly.dev) (`web/dev-guild`, Fly.io) | The hosted group chat and `/terminal` | Live |
 | [ChatGPT: "Build Brand Typography"](https://chatgpt.com/share/6b09b014-c7ac-83e8-a337-5d90966a69bf) | Brand architecture, taglines, type system, palette, 18 guild houses, character bible, voice rules, and later a Liquid-Glass chat redesign and a "v5" infrastructure plan | Proposal. Its download packages never reached this repository. |
 | [ChatGPT: "Free AI Coding Agents"](https://chatgpt.com/share/6b09b03d-a304-83e8-9ca4-053bb8fa192e) | The roster: 75 coding agents plus API-key developer tools by category | Already reflected in [`GUILD-DIRECTORY.md`](GUILD-DIRECTORY.md) |
 
@@ -159,10 +159,10 @@ Anything that touches security, authentication, approvals, or audit records stay
 ## Guardrails
 
 - **Third-party names.** Many characters are named after real products (Vercel, Firecrawl, OpenCode, and others). Every place that shows the roster needs this notice: *"Characters are fan-made personas. Collaborate is not affiliated with or endorsed by the products named."* Character art should be original. Do not redraw a company's logo as a mascot. The current avatars in `assets/dev-guild/avatars/` and `web/dev-guild/public/avatars/` use real product marks, so they need a separate legal review.
-- **Apple language.** Describe the look as "glass-style" or "iOS-inspired". Do not call it "Liquid Glass" or "iPhone 18" in public copy, because those are Apple's names. The native SwiftUI `glassEffect()` path in the ChatGPT v5 plan is a separate future client, and nothing in this repository builds it yet.
+- **Apple language.** In public marketing copy, describe the look as "glass-style" or "iOS-inspired". Do not call it "Liquid Glass" or "iPhone 18", because those are Apple's names. Engineering docs may describe the native reference client in `native/ios`, which sketches that glass-style chat UI (glass nav, solid bubbles, glass composer, translucent attachment sheet, plugin list, adaptive photo controls, system/light/dark, and reduced motion, transparency, and contrast, plus Dev Guild art). It has not been compiled. The free mobile path is the PWA.
 - **Name clearance.** Before any registration, run a trademark and handle search for "The Dev Guild" and "Collaborate". Both are common words and other groups already use them. A distinct qualifier may be needed, such as "Collaborate Dev Guild" or a coined name.
 - **The parent name.** "GoodShyt" reads as profanity to some enterprise and education buyers. Keep it on legal and company pages, and let **Collaborate** carry the product.
-- **ChatGPT deliverables.** The ChatGPT sessions describe a brand kit ZIP, a 478-character JSON file, an interactive guide, and a "v5" staging package with S3, ClamAV, and SwiftUI. None of these are in this repository. Treat them as **UNVERIFIED** until they are committed and tested here.
+- **ChatGPT deliverables.** Sessions described a brand kit ZIP, a 478-character JSON file, and an interactive guide that are still **UNVERIFIED** here. A native iOS reference client now lives in `native/ios` (not compiled). Durable rooms, R2 attachments, and fail-closed ClamAV scanning are in `web/dev-guild` (PR 101); ClamAV itself is not hosted, and uploads stay disabled.
 
 ## Next steps
 

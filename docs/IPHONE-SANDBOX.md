@@ -1,5 +1,11 @@
 # iPhone sandbox terminal (Secure ShellFish) -- Free ($0) Setup
 
+> **This sandbox is optional and is not how the product is hosted.** The live
+> app is the Fly.io deployment at
+> [collaborate-asciidoc.fly.dev](https://collaborate-asciidoc.fly.dev).
+> See [`DEPLOYMENT.md`](DEPLOYMENT.md). Use this page only if you want an
+> SSH environment on your phone for repo work.
+
 Drive the repository and its agents from an iPhone at **$0 cost**. Secure ShellFish is the SSH terminal on the phone; everything runs on a free remote Linux environment.
 
 > **Paid servers are not used.** Do not spin up DigitalOcean Droplets or Hetzner Cloud servers unless you intend to pay monthly/hourly hosting charges. Use one of the two free ($0) paths below instead.
@@ -7,7 +13,7 @@ Drive the repository and its agents from an iPhone at **$0 cost**. Secure ShellF
 ```
 iPhone · Secure ShellFish
   ├─ Path A (free tier, $0 limit): GitHub Codespaces (.devcontainer/devcontainer.json + sshd)
-  └─ Path B (permanent free tier): Oracle Cloud Always Free Ubuntu 24.04 (ARM64 Ampere A1), user "sandbox" (no sudo)
+  └─ Path B (legacy, often unavailable): Oracle Cloud Always Free Ubuntu 24.04, user "sandbox" (no sudo)
                                      ├─ tmux: claude · codex · gemini · manus · operator
                                      ├─ tmux: collaborate-terminal -> agentterm on 127.0.0.1:8787 (or 8080)
                                      └─ Collaborate.asciidoc -> GitHub PRs and CI
@@ -20,7 +26,7 @@ Agent work still lands only through pull requests and the required checks. The p
 | Path | Cost | Specs & Limits | Best For |
 |---|---|---|---|
 | **Path A: GitHub Codespaces** | **$0** (set spending limit to `$0`) | 120 free core-hours/month (60 hours on 2-core) + 15 GB-month storage; auto-sleeps after 15 min idle | Fastest start; pre-configured via `.devcontainer/devcontainer.json`; clones private repo automatically |
-| **Path B: Oracle Cloud Always Free** | **$0/month** | Up to 4 ARM64 Ampere A1 OCPUs + 24 GB RAM total (e.g. 2 OCPU / 12 GB RAM) or AMD Micro, 200 GB block storage | Always-on SSH server on port 22 with unprivileged `sandbox` user; subject to regional capacity and idle-VM reclamation |
+| **Path B: Oracle Cloud Always Free** | **$0/month** | A 1 GB AMD Micro VM may already exist but is **unused**. Ampere A1 (up to 4 OCPUs / 24 GB) is often out of capacity. 200 GB block storage is the Always Free disk cap | Direct SSH on port 22 with an unprivileged `sandbox` user, when a VM can be created. Treat this path as legacy until capacity or a smaller unused VM is actually in use |
 
 ## Path A: GitHub Codespaces ($0 spending limit)
 
@@ -38,9 +44,16 @@ collab-status
 collab-terminal
 ```
 
-## Path B: Oracle Cloud Always Free (Ubuntu 24.04 ARM64)
+## Path B: Oracle Cloud Always Free (legacy / unused)
 
-1. **Create an Always Free VM:** in Oracle Cloud Infrastructure (OCI), create a Compute instance labeled **Always Free-eligible**:
+**Status today:** a 1 GB Always Free VM may already exist in the account but
+is not used for this project (SSH access from the agent's box was never
+completed). Ampere A1 Flex capacity is often unavailable, and upgrading
+the account to Pay As You Go can place a large temporary card hold. Prefer
+the live Fly app or Path A (Codespaces) unless you are deliberately
+reviving this VM.
+
+1. **Create an Always Free VM** (only if you still need one): in Oracle Cloud Infrastructure (OCI), create a Compute instance labeled **Always Free-eligible**:
    - **Image:** Canonical Ubuntu 24.04 LTS (`aarch64` / ARM64)
    - **Shape:** `VM.Standard.A1.Flex` (Ampere A1, e.g. 2 OCPUs / 12 GB RAM; Always Free allows up to 4 OCPUs and 24 GB RAM total) or `VM.Standard.E2.1.Micro`
    - **SSH key:** paste your Secure ShellFish **Secure Enclave** public key (`ssh-ed25519 ...`) during VM creation.
@@ -138,7 +151,10 @@ Your tailnet name, server IP, key fingerprints, and GitHub tokens belong only in
 
 ## Dev Guild on the same VM
 
-The iMessage client lives in `web/dev-guild` and deploys to Vercel. The bridge stays on this VM so the signed log never leaves it. After the user step:
+The live group chat and agent terminal already run together on Fly
+([`DEPLOYMENT.md`](DEPLOYMENT.md)). Use this section only if you want the
+optional `guild` bridge on a sandbox VM so a signed log never leaves that
+host. After the user step:
 
 ```bash
 export GUILD_OWNER_TOKEN='a long passphrase'

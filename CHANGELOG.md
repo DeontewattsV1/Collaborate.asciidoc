@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Hosted app.** The live product is the Fly.io app
+  [`collaborate-asciidoc.fly.dev`](https://collaborate-asciidoc.fly.dev):
+  one `shared-cpu-1x` 256 MB machine in `iad` running Dev Guild and the
+  agent terminal, auto-stopping when idle. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+  The earlier Vercel Hobby demo is no longer the current host.
+
 ## 0.2.0 — 2026-11-25
 
 Dev Guild is now a self-hostable product, not just a bridge demo.
