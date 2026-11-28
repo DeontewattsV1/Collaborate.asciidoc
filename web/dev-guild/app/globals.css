@@ -1171,3 +1171,43 @@ button { cursor: pointer; }
     padding-bottom: calc(20px + env(safe-area-inset-bottom));
   }
 }
+
+/* Secure secret drop: glass sheet + redacted cards (see docs/SECRETS.md) */
+.key-btn { border: 0; cursor: pointer; font-size: 15px; }
+.glass-sheet.secret-sheet {
+  background: rgba(28, 28, 30, 0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+  backdrop-filter: saturate(180%) blur(28px);
+  border-top: 0.5px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.35);
+}
+.secret-fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.secret-fieldset legend { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.secret-card {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.secret-card-head { display: flex; align-items: center; gap: 6px; }
+.secret-card-head strong { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
+.secret-card-meta { opacity: 0.85; margin-top: 2px; }
+.secret-card-meta a { color: inherit; text-decoration: underline; }
+.secret-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.secret-card .tag { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); }
+.secret-card .tag.env { background: rgba(10, 132, 255, 0.35); }
+.secret-card .tag.agent { background: rgba(191, 90, 242, 0.32); }
+.secret-status { margin-left: auto; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: rgba(142, 142, 147, 0.4); text-transform: capitalize; }
+.secret-status.verified { background: rgba(48, 209, 88, 0.45); }
+.secret-status.invalid, .secret-status.revoked, .secret-status.expired { background: rgba(255, 69, 58, 0.5); }
+@media (prefers-reduced-transparency: reduce) {
+  .glass-sheet.secret-sheet { background: #1c1c1e; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  .secret-card, .glass-sheet.secret-sheet { border: 1px solid #fff; background: #000; }
+  .secret-card .tag, .secret-status { background: #000; border: 1px solid #fff; }
+}

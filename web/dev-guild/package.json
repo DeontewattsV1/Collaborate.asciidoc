@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test --test-concurrency=1 lib/*.test.js lib/roomStore/*.test.js lib/rooms/*.test.js"
+    "test": "node --test --test-concurrency=1 lib/*.test.js lib/roomStore/*.test.js lib/rooms/*.test.js lib/secrets/*.test.js"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.126",

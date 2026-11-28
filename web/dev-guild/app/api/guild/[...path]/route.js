@@ -1,3 +1,4 @@
+import { redactSecrets } from "../../../../lib/secrets/detector.js";
 import { generateText } from "ai";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -257,7 +258,8 @@ async function handleProxy(request, { params }) {
       return NextResponse.json({ error: "bad json" }, { status: 400 });
     }
     const threadId = parts[2];
-    const rawText = String(body.text || "").trim();
+    // Intercept credentials before storage, prompts or the VM backend.
+    const rawText = redactSecrets(String(body.text || "")).text.trim();
     const text = demo ? rawText.slice(0, DEMO_MAX_INPUT_CHARS) : rawText;
     if (!text) return NextResponse.json({ error: "message is empty" }, { status: 400 });
     let rateInfo = null;

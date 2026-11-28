@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, DemoSheet, PhoneFrame, ProfileSheet, timeLabel } from "./components";
 import { REACTIONS, roomVibe, starterPrompts } from "../lib/social.js";
+import { redactSecrets } from "../lib/secrets/detector.js";
+import { SecretCard, SecretSheet } from "./secrets";
 
 const STARTER_IDS = ["claude", "grok", "gemini", "codex", "tay"];
 const DEMO_CAST_IDS = ["claude", "grok", "chatgpt", "gemini", "tay"];
@@ -101,6 +103,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [composing, setComposing] = useState(false);
   const [error, setError] = useState("");
+  const [secretDraft, setSecretDraft] = useState(null);
   const [reactionFor, setReactionFor] = useState(null);
 
   const [groupSheet, setGroupSheet] = useState(null);
@@ -389,6 +392,20 @@ export default function App() {
   async function send(overrideText) {
     const body = String(overrideText !== undefined ? overrideText : text).trim();
     if ((!body && files.length === 0) || pending) return;
+    // Client-side interception: a message that looks like it holds a
+    // credential is never sent. The owner gets the vault sheet instead.
+    const scan = redactSecrets(body, { keepValues: true });
+    if (scan.redacted) {
+      setText(scan.text);
+      if (!demoMode && role === "owner") {
+        const hit = scan.findings[0];
+        setSecretDraft({ value: hit.value, provider: hit.provider, name: hit.hint || "", intercepted: true });
+      } else {
+        setError("That looked like a secret, so it wasn't sent. Only the owner can store secrets.");
+      }
+      scan.findings.forEach((f) => { f.value = ""; });
+      return;
+    }
     if (overrideText === undefined) setText("");
     const chosen = demoMode ? [] : files;
     setFiles([]);
@@ -1062,6 +1079,8 @@ export default function App() {
                     >
                       {m.reasoning ? <details className="thinking"><summary>Thinking</summary><p>{m.reasoning}</p></details> : null}
                       {m.text}
+                      {m.secret ? <SecretCard card={m.secret} /> : null}
+                      {(m.secrets || []).map((c) => <SecretCard key={c.id} card={c} />)}
                       {(m.files || []).map((name) => <span className="file-chip" key={name}>{name}</span>)}
                     </div>
                   </div>
@@ -1148,6 +1167,11 @@ export default function App() {
                 <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" aria-label="Attach image or PDF" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
               ) : null}
             </label>
+            {!demoMode && role === "owner" ? (
+              <button type="button" className="plus-circle key-btn" title="Add secret" aria-label="Add secret" onClick={() => setSecretDraft({})}>
+                <span aria-hidden="true">🔑</span>
+              </button>
+            ) : null}
             <div className="composer-pill">
               <textarea
                 rows={1}
@@ -1163,6 +1187,16 @@ export default function App() {
           </form>
         </section>
       )}
+
+      {secretDraft ? (
+        <SecretSheet
+          draft={secretDraft}
+          thread={active}
+          agents={characters.filter((c) => groupMemberSet.has(c.id) && c.id !== "owner")}
+          onClose={() => setSecretDraft(null)}
+          onSaved={() => loadMessages(active, false, false).catch(() => {})}
+        />
+      ) : null}
 
       <ProfileSheet
         profile={profile}

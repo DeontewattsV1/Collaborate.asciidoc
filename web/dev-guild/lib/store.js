@@ -6,6 +6,7 @@ import { directoryCharacters } from "./directory.js";
 import { isReaction, summarizeReactions, viewerIdFromAuth } from "./social.js";
 import { StoreConflictError } from "./roomStore/errors.js";
 import { postgresStore } from "./roomStore/postgresStore.js";
+import { redactSecrets } from "./secrets/detector.js";
 
 const STATE_PATH = "/tmp/dev-guild-state.json";
 
@@ -542,7 +543,12 @@ export async function openDMThread(characterId, catalog, env) {
   return thread;
 }
 
-export async function appendLine({ threadId, from, text, kind = "message", reasoning = "", tool = "", task = "", assignee = "", card_status = "", files = [], catalog = [], senderName = "", env }) {
+export async function appendLine({ threadId, from, text, kind = "message", reasoning = "", tool = "", task = "", assignee = "", card_status = "", files = [], catalog = [], senderName = "", secret = null, env }) {
+  // Defense in depth: no raw credential is ever written to a transcript, even
+  // one an agent echoes back. Routes redact before this point too.
+  text = redactSecrets(String(text || "")).text;
+  reasoning = reasoning ? redactSecrets(String(reasoning)).text : reasoning;
+  task = task ? redactSecrets(String(task)).text : task;
   const demo = isDemoMode(env);
   const durable = !demo && usesPostgres(env);
   const state = demo || durable ? null : loadState();
@@ -577,6 +583,7 @@ export async function appendLine({ threadId, from, text, kind = "message", reaso
     assignee: assignee || undefined,
     card_status: card_status || undefined,
     files: files && files.length ? files : undefined,
+    secret: secret || undefined,
   };
   if (durable) {
     const { seq: _seq, id: _id, thread: _thread, from: _from, kind: _kind, ...body } = msg;

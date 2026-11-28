@@ -1,6 +1,7 @@
 import { stepCountIs, streamText } from "ai";
 import { jsonSchema, tool } from "ai";
 import { cookies } from "next/headers";
+import { redactSecrets } from "../../../../lib/secrets/detector.js";
 import {
   checkGuildAuth,
   decryptCustomAgents,
@@ -166,7 +167,10 @@ export async function POST(request) {
   }
 
   const autonomous = Boolean(demo && body.autonomous);
-  const rawText = String(body.text || "").trim();
+  // Intercept credentials before they reach the transcript, the model prompt
+  // or the VM backend. Use the "Add secret" sheet to store one in the vault.
+  const scrubbed = redactSecrets(String(body.text || ""));
+  const rawText = scrubbed.text.trim();
   const text = autonomous
     ? String(body.topic || DEMO_TOPICS[0]).slice(0, 200)
     : (demo ? rawText.slice(0, DEMO_MAX_INPUT_CHARS) : rawText);

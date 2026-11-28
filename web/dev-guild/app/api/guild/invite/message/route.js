@@ -1,3 +1,4 @@
+import { redactSecrets } from "../../../../../lib/secrets/detector.js";
 import { generateText } from "ai";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -63,7 +64,8 @@ export async function POST(request) {
     return NextResponse.json({ error: auth.error || "Invalid invite token." }, { status: 401 });
   }
 
-  const text = String(body.text || "").trim().slice(0, 4000);
+  // Invited senders never get to store a credential: redact before storage or prompts.
+  const text = redactSecrets(String(body.text || "").slice(0, 4000)).text.trim();
   if (!text) return NextResponse.json({ error: "text is required" }, { status: 400 });
 
   const cookieAgents = decryptCustomAgents(jar.get("guild_custom_agents")?.value || "", token);
