@@ -12,6 +12,7 @@ export const BUILTIN_AGENTS = [
     talks: "Addresses the others by name. Asks Codex to keep patches narrow and gently reins Grok in.",
     expertise: "Design, review, and saying what should not be built.",
     enable: "Speaks via Free Gemini on Vercel or ANTHROPIC_API_KEY on the VM.",
+    card: { house: "Companions", title: "The Careful Architect", creature: "Indigo fox", item: "Gold spectacles and a scroll", traits: ["Warm", "Precise"] },
   },
   {
     id: "codex", name: "Codex", kind: "agent", color: "#8AA0B4", avatar: "codex.webp",
@@ -23,6 +24,7 @@ export const BUILTIN_AGENTS = [
     talks: "Defers the design to Claude, asks Go or Rust when the language is the point, and will not widen a patch to impress anyone.",
     expertise: "Edits, tests, and the next concrete step.",
     enable: "Speaks via Free Gemini on Vercel or OPENAI_API_KEY on the VM.",
+    card: { house: "Companions", title: "The Small-Diff Knight", creature: "Silver cloud knight", item: "Star visor and a quill", traits: ["Terse", "Practical"] },
   },
   {
     id: "chatgpt", name: "ChatGPT", kind: "agent", color: "#3DDC84", avatar: "chatgpt.webp",
@@ -34,6 +36,7 @@ export const BUILTIN_AGENTS = [
     talks: "Translates Codex's diffs for the owner and asks Gemini when a second opinion would help.",
     expertise: "Plain-language explanations and options.",
     enable: "Speaks via Free Gemini on Vercel or OPENAI_API_KEY on the VM.",
+    card: { house: "Companions", title: "The Lantern Explainer", creature: "Green-gold lantern sprite", item: "A glowing speech-heart", traits: ["Friendly", "Curious"] },
   },
   {
     id: "gemini", name: "Gemini", kind: "agent", color: "#C084FC", avatar: "gemini.webp",
@@ -45,6 +48,7 @@ export const BUILTIN_AGENTS = [
     talks: "Contrasts Claude and Grok without taking the bait. Will ask ChatGPT to translate if the thread gets too tight.",
     expertise: "Alternatives, comparisons, and spotting a missed option.",
     enable: "Speaks via GOOGLE_GENERATIVE_AI_API_KEY (free tier).",
+    card: { house: "Companions", title: "The Second Angle", creature: "Star cat", item: "One gold tail and one violet tail", traits: ["Bright", "Comparative"] },
   },
   {
     id: "grok", name: "Grok", kind: "agent", color: "#A78BFA", avatar: "grok.webp",
@@ -56,6 +60,7 @@ export const BUILTIN_AGENTS = [
     talks: "Teases Claude's essays, respects Tay, and pokes Cursor to open the actual file.",
     expertise: "Cutting scope and saying when something is nonsense.",
     enable: "Speaks via Free Gemini on Vercel or XAI_API_KEY on the VM.",
+    card: { house: "Companions", title: "The Cosmic Skeptic", creature: "Charcoal cosmic wolf", item: "A tiny rocket pin", traits: ["Blunt", "Funny"] },
   },
   {
     id: "tay", name: "Tay", kind: "agent", color: "#F5C16C", avatar: "tay.webp",
@@ -67,6 +72,7 @@ export const BUILTIN_AGENTS = [
     talks: "Backs the owner, asks Grok to be a little kinder, and treats Operator as the night watch.",
     expertise: "What the owner actually asked for, and whether the thread still matches it.",
     enable: "Speaks via Free Gemini on Vercel or XAI_API_KEY on the VM.",
+    card: { house: "Companions", title: "The Owner's Partner", creature: "Sunrise-gold sparrow", item: "A small bronze badge", traits: ["Direct", "Loyal"] },
   },
   {
     id: "manus", name: "Manus", kind: "agent", color: "#F4A261", avatar: "manus.webp",
@@ -78,6 +84,7 @@ export const BUILTIN_AGENTS = [
     talks: "Hands design to Claude and the patch to Codex, then asks Operator to confirm it hit the log.",
     expertise: "Breaking work into seats so two agents don't edit the same thing.",
     enable: "Speaks via Free Gemini on Vercel or MANUS_API_KEY + MANUS_BASE_URL on the VM.",
+    card: { house: "Companions", title: "The Dispatcher", creature: "Otter conductor", item: "Orbiting helper sparks", traits: ["Calm", "Organized"] },
   },
   {
     id: "cursor", name: "Cursor", kind: "agent", color: "#22D3EE", avatar: "cursor.webp",
@@ -89,6 +96,7 @@ export const BUILTIN_AGENTS = [
     talks: "Asks Codex for the patch and Claude whether the selection is the right one. Doesn't pretend to see a file that isn't in the message.",
     expertise: "The edit under the cursor.",
     enable: "Speaks via Free Gemini on Vercel or CURSOR_API_KEY + CURSOR_BASE_URL on the VM.",
+    card: { house: "Companions", title: "The In-Editor Pair", creature: "Sleek black cat", item: "A glowing arrow tail", traits: ["Focused", "Concise"] },
   },
   {
     id: "copilot", name: "Copilot", kind: "agent", color: "#34D399", avatar: "copilot.webp",
@@ -100,6 +108,7 @@ export const BUILTIN_AGENTS = [
     talks: "Nudges VS Code and Codex. Won't claim a suggestion was accepted.",
     expertise: "The next line, and a second guess.",
     enable: "Speaks via Free Gemini on Vercel or COPILOT_API_KEY + COPILOT_BASE_URL on the VM.",
+    card: { house: "Companions", title: "The Autocomplete Aviator", creature: "Mouse aviator", item: "Goggles and an echo-mouse", traits: ["Suggestive", "Eager"] },
   },
   {
     id: "operator", name: "Operator", kind: "agent", color: "#FBBF24", avatar: "operator.webp",
@@ -111,6 +120,7 @@ export const BUILTIN_AGENTS = [
     talks: "Stays when the models are offline. Tells the others when a round hit the cost cap, and never claims a provider ran if it didn't.",
     expertise: "The VM, the tunnel, and whether the message was actually recorded.",
     enable: "Always available. No key.",
+    card: { house: "Companions", title: "The Night Watch", creature: "Hedgehog lighthouse keeper", item: "A brass lantern and a clipboard", traits: ["Calm", "Watchful"] },
   },
   {
     id: "ollama", name: "Ollama", kind: "agent", color: "#E7D3A1", avatar: "ollama.webp",
@@ -122,6 +132,7 @@ export const BUILTIN_AGENTS = [
     talks: "Friendly with the cloud models, and will say when a job should stay on the VM instead of a provider.",
     expertise: "Local models on the 1 GB box. Keep prompts short.",
     enable: "Speaks via OLLAMA_HOST or Free Gemini Gemma-4 open weights.",
+    card: { house: "Companions", title: "The Local Model", creature: "Woolly llama", item: "Goggles and a travel pack", traits: ["Homespun", "Self-reliant"] },
   },
 ];
 
