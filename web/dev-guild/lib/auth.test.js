@@ -10,6 +10,7 @@ import {
   clearLoginFailures,
   inviteCodeFor,
   isOwnerCookie,
+  loginClientKey,
   loginRetryAfter,
   readInviteSession,
   readInviteSessionIds,
@@ -104,4 +105,13 @@ test("failed sign-ins are throttled per client and cleared on success", () => {
   clearLoginFailures("1.2.3.4");
   assert.equal(loginRetryAfter("1.2.3.4", now), 0);
   resetLoginThrottleForTest();
+});
+
+test("login throttle keys IPv4 by address and IPv6 by /64", () => {
+  const req = (ip) => ({ headers: new Headers({ "fly-client-ip": ip }) });
+  assert.equal(loginClientKey(req("203.0.113.9")), "203.0.113.9");
+  assert.equal(loginClientKey(req("2a09:bac5:670c:4aa::77:46")), "2a09:bac5:670c:4aa::/64");
+  assert.equal(loginClientKey(req("2a09:bac5:670c:4aa::77:c4")), "2a09:bac5:670c:4aa::/64");
+  assert.equal(loginClientKey(req("2001:db8::1")), "2001:db8:0:0::/64");
+  assert.equal(loginClientKey({ headers: new Headers() }), "local");
 });

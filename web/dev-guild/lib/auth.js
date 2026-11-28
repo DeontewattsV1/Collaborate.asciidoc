@@ -243,11 +243,26 @@ export function resetLoginThrottleForTest() {
   loginFailures.clear();
 }
 
+// IPv6 clients are throttled per /64: one host (or one privacy-extension
+// network) can trivially rotate addresses inside its /64.
 export function loginClientKey(request) {
   const h = request && request.headers;
   if (!h) return "local";
   const fwd = h.get("fly-client-ip") || h.get("x-real-ip") || h.get("x-forwarded-for") || "";
-  return fwd.split(",")[0].trim().slice(0, 64) || "local";
+  const ip = fwd.split(",")[0].trim().slice(0, 64);
+  if (!ip) return "local";
+  return ip.includes(":") ? ipv6Prefix64(ip) : ip;
+}
+
+function ipv6Prefix64(ip) {
+  const addr = ip.replace(/^\[|\]$/g, "").split("%")[0].toLowerCase();
+  if (addr.includes(".")) return addr; // IPv4-mapped; keep as is
+  const [head, tail = ""] = addr.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const fill = addr.includes("::") ? Array(Math.max(0, 8 - left.length - right.length)).fill("0") : [];
+  const groups = [...left, ...fill, ...right].map((g) => (g || "0").replace(/^0+(?=.)/, ""));
+  return `${groups.slice(0, 4).join(":")}::/64`;
 }
 
 export function cookieOptions(maxAge = INVITE_SESSION_SECONDS) {

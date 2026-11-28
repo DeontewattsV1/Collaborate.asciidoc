@@ -30,6 +30,12 @@ var termAPI = map[string]bool{
 func proxy(target *url.URL) *httputil.ReverseProxy {
 	p := httputil.NewSingleHostReverseProxy(target)
 	p.FlushInterval = -1
+	// Add the security headers after the upstream answers, and only those it
+	// did not set itself, so no header is ever sent twice.
+	p.ModifyResponse = func(resp *http.Response) error {
+		addSecurityHeaders(resp.Header)
+		return nil
+	}
 	p.Transport = &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -58,6 +64,16 @@ var securityHeaders = map[string]string{
 	"Permissions-Policy":        "camera=(), microphone=(), geolocation=(), payment=()",
 }
 
+// addSecurityHeaders sets each security header the response does not
+// already carry.
+func addSecurityHeaders(h http.Header) {
+	for k, v := range securityHeaders {
+		if h.Get(k) == "" {
+			h.Set(k, v)
+		}
+	}
+}
+
 // newHandler routes /terminal and the agentterm API paths to term and
 // everything else to web. Requests that reached Fly's edge over plain HTTP
 // (X-Forwarded-Proto: http) are redirected to https; Fly's own health checks
@@ -70,12 +86,6 @@ func newHandler(web, term http.Handler) http.Handler {
 			w.Header().Set("Location", target)
 			w.WriteHeader(http.StatusPermanentRedirect)
 			return
-		}
-		h := w.Header()
-		for k, v := range securityHeaders {
-			if h.Get(k) == "" {
-				h.Set(k, v)
-			}
 		}
 		path := r.URL.Path
 		switch {
