@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Isolated by construction: no network access (connect-src 'none'), no forms, no third-party code. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Collaborate playground: see the conflict before the merge</title>
+  <meta name="description" content="A synthetic, no-login playground for Collaborate Check: two agents collide, an agent handoff, and a verifiable human review.">
+  <link rel="canonical" href="https://deontewattsv1.github.io/Collaborate.asciidoc/playground.html">
+  <link rel="icon" type="image/webp" href="avatars/tay.webp">
+  <style>
+    :root { color-scheme: light dark; --bg:#06070b; --panel:rgba(28,28,30,.78); --line:rgba(255,255,255,.12); --text:#fff; --muted:#a1a1a6; --blue:#0a84ff; --green:#30d158; --red:#ff453a; --amber:#ffd60a; --bubble:#262629; }
+    @media (prefers-color-scheme: light) { :root { --bg:#f2f2f7; --panel:rgba(255,255,255,.86); --line:rgba(0,0,0,.12); --text:#1c1c1e; --muted:#5f5f66; --bubble:#e9e9eb; } }
+    @media (prefers-contrast: more) { :root { --line:currentColor; --muted:inherit; } }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
+    a { color:var(--blue); }
+    .wrap { width:min(1180px, calc(100% - 28px)); margin:0 auto; }
+    header { padding:28px 0 8px; }
+    h1 { font-size:clamp(26px, 4vw, 40px); margin:.2em 0; letter-spacing:-.02em; }
+    .lede { color:var(--muted); max-width:760px; }
+    .banner { border:1px solid var(--line); border-radius:14px; padding:10px 14px; margin:14px 0; background:var(--panel); font-size:14px; }
+    .tabs { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+    .tab { border:1px solid var(--line); background:var(--panel); color:var(--text); border-radius:999px; padding:8px 14px; font:inherit; cursor:pointer; }
+    .tab[aria-selected="true"] { background:var(--blue); border-color:var(--blue); color:#fff; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr 1.15fr; gap:14px; align-items:start; }
+    @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:14px; backdrop-filter:saturate(160%) blur(20px); -webkit-backdrop-filter:saturate(160%) blur(20px); }
+    @media (prefers-reduced-transparency: reduce) { .panel, .banner, .tab { backdrop-filter:none; -webkit-backdrop-filter:none; background:var(--bg); } }
+    .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; }
+    #chat { max-height:420px; overflow:auto; display:flex; flex-direction:column; gap:10px; }
+    .msg { display:flex; gap:8px; align-items:flex-start; }
+    .avatar { width:32px; height:32px; border-radius:50%; flex:none; object-fit:cover; }
+    .avatar-human { display:inline-grid; place-items:center; background:var(--green); color:#000; font-weight:700; }
+    .bubble { background:var(--bubble); border-radius:16px; padding:8px 12px; display:flex; flex-direction:column; }
+    .who { font-size:12px; color:var(--muted); }
+    .pr { border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:10px; }
+    .pr-target { border-color:var(--blue); }
+    .pr-closed { opacity:.6; }
+    .pr-head { display:flex; gap:8px; align-items:center; }
+    .pr-head .avatar { width:22px; height:22px; }
+    .pr-meta { color:var(--muted); font-size:13px; margin:4px 0; }
+    .paths { margin:4px 0 0; padding-left:18px; font:13px ui-monospace, "SF Mono", Menlo, monospace; }
+    .claim { color:var(--amber); }
+    .comment { border-left:4px solid var(--muted); padding-left:12px; }
+    .outcome-pass { border-color:var(--green); }
+    .outcome-blocked { border-color:var(--red); }
+    .comment h3 { margin:.2em 0; }
+    .comment-by, .footer { color:var(--muted); font-size:12px; }
+    .resolution { font-weight:600; }
+    .reconciled { color:var(--green); }
+    table { border-collapse:collapse; width:100%; margin:8px 0; font-size:13px; }
+    th, td { text-align:left; border-bottom:1px solid var(--line); padding:5px 6px; vertical-align:top; }
+    .controls { display:flex; gap:10px; align-items:center; margin:14px 0; flex-wrap:wrap; }
+    .btn { border:0; border-radius:999px; padding:10px 18px; font:inherit; font-weight:600; background:var(--blue); color:#fff; cursor:pointer; }
+    .btn:disabled { opacity:.4; cursor:default; }
+    .btn-ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+    #caption { font-size:16px; margin:6px 0 0; }
+    #progress { color:var(--muted); font-size:13px; }
+    footer { color:var(--muted); font-size:13px; padding:24px 0 40px; }
+    @media (prefers-reduced-motion: no-preference) { .tab, .btn { transition: background .15s ease; } }
+  </style>
+  <script src="playground.js" defer></script>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a href="./">← Collaborate</a>
+      <h1>See the conflict before the merge.</h1>
+      <p class="lede">Three short scenarios show what Collaborate Check reports on a pull request when several AI coding agents work in the same repository. Use Next step to move through each one.</p>
+      <div class="banner" role="note"><strong>Synthetic playground.</strong> You don't need an account, nothing is stored, nothing is sent over the network, and no AI model runs. Every agent, person, pull request, and commit here is fictional, and the messages are scripted. Real checks run in GitHub with the open-source checker; see <a href="https://github.com/DeontewattsV1/Collaborate.asciidoc/blob/main/docs/ACTION.md">docs/ACTION.md</a>.</div>
+    </header>
+
+    <nav class="tabs" id="scenario-tabs" role="tablist" aria-label="Scenarios"></nav>
+    <p id="scenario-blurb" class="lede"></p>
+
+    <div class="controls">
+      <button class="btn btn-ghost" id="prev" type="button">← Back</button>
+      <button class="btn" id="next" type="button">Next step →</button>
+      <span id="progress"></span>
+    </div>
+    <p id="caption" aria-live="polite"></p>
+
+    <main class="grid">
+      <section class="panel" aria-labelledby="chat-h"><h2 id="chat-h">Group chat</h2><div id="chat"></div></section>
+      <section class="panel" aria-labelledby="board-h"><h2 id="board-h">Open pull requests and leases</h2><div id="board"></div></section>
+      <section class="panel" aria-labelledby="comment-h"><h2 id="comment-h">Collaborate Check result</h2><div id="comment" aria-live="polite"></div></section>
+    </main>
+
+    <footer>
+      A path overlap is not necessarily a Git merge conflict. Collaborate reports lease overlaps and review evidence, and it doesn't claim to prevent every integration failure.
+      Collaborate is an independent project by GoodShyt Group Inc. · <a href="https://github.com/DeontewattsV1/Collaborate.asciidoc">Source (Apache-2.0)</a>
+    </footer>
+  </div>
+</body>
+</html>

@@ -61,8 +61,10 @@ Commands:
 		adapter run --plugin MANIFEST.json --prompt TEXT
 		mcp --repo DIR --agent ID          stdio MCP coordination server
 		mcp [--repo DIR] --agent ID        stdio MCP server for one agent identity
-		github-check --pr N [--repo OWNER/NAME] [--registry FILE] [--comment] [--summary FILE] [--json]
+		github-check --pr N [--repo OWNER/NAME] [--registry FILE] [--registry-ref REF] [--comment] [--summary FILE] [--json]
+		             [--head-sha SHA] [--reconcile] [--set-status] [--allow-indeterminate] [--output FILE]
 		                                   coordinate GitHub PRs from any AI platform (needs GITHUB_TOKEN)
+		                                   exit 0 PASS, 1 BLOCKED, 2 ERROR, 3 INDETERMINATE
 
 Set COLLAB_AGENT to select the registered signing identity. Remote serving requires mTLS.
 Provider adapters read credentials/models from environment variables: openai-compatible uses COLLAB_MODEL_BASE_URL, COLLAB_MODEL, and COLLAB_MODEL_API_KEY (or OPENAI_API_KEY); Anthropic uses ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, ANTHROPIC_API_KEY; Gemini uses GEMINI_BASE_URL, GEMINI_MODEL, GEMINI_API_KEY (or GOOGLE_API_KEY).

@@ -47,7 +47,8 @@ fi
 step "build binaries"            bash -c "go build -trimpath -buildvcs=false -o '$out/collaborate' ./cmd/collaborate \
                                    && go build -trimpath -buildvcs=false -o '$out/collab' ./cmd/collab \
                                    && go build -trimpath -buildvcs=false -o '$out/agentterm' ./cmd/agentterm \
-                                   && go build -trimpath -buildvcs=false -o '$out/guild' ./cmd/guild"
+                                   && go build -trimpath -buildvcs=false -o '$out/guild' ./cmd/guild \
+                                   && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o '$out/collaborate-check' ./cmd/collaborate-check"
 if command -v actionlint >/dev/null 2>&1; then
   step "actionlint"              actionlint -shellcheck=
 else

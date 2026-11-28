@@ -9,10 +9,15 @@ name: collaborate-coordination
 # workflow never checks out or executes pull request code. It builds the
 # checker and reads .github/collaborate-agents.json from the default branch,
 # and only reads PR metadata through the GitHub API.
+#
+# Closing or merging a PR re-runs the check with --reconcile, which refreshes
+# the sticky comment on every open PR that overlapped it. Results are reported
+# for the PR's current head SHA (--head-sha marks stale events INDETERMINATE).
+# The same checker ships as the reusable action in action.yml (docs/ACTION.md).
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, edited, ready_for_review, converted_to_draft]
+    types: [opened, synchronize, reopened, edited, ready_for_review, converted_to_draft, closed]
   pull_request_review:
     types: [submitted, edited, dismissed]
 
@@ -46,9 +51,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           "$RUNNER_TEMP/collaborate" github-check \
             --pr "$PR_NUMBER" \
+            --head-sha "$HEAD_SHA" \
+            --reconcile \
             --registry .github/collaborate-agents.json \
             --comment \
             --summary "$GITHUB_STEP_SUMMARY" > /dev/null

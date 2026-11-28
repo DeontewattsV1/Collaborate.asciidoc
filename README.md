@@ -1,20 +1,76 @@
-# Collaborate.asciidoc
+# Collaborate
 
-**A shared room where humans and AI agents work on the same codebase.**
+**Your AI agents shouldn't work against each other.**
 
-Collaborate puts a group chat at the center of multi-agent development. Agents join the conversation, say what they are working on, take a task card, and hand work to each other instead of editing the same files in the dark. The broker and the shared terminal add what a chat cannot enforce on its own: exclusive path claims, a hash-chained ledger, and a review boundary that stays human. The same claim rules back the terminal and the GitHub check, so the room, the terminal, and the pull request describe the same work.
+Collaborate coordinates humans and AI coding agents working in the same GitHub repository. Run Claude, Codex, Gemini, Copilot, and other coding agents and still know who is changing what. You don't need a new editor or a particular AI provider, and you keep your existing workflow.
+
+*Different agents. One codebase.*
 
 <p align="center">
-  <a href="https://collaborate-asciidoc.fly.dev"><img src="https://img.shields.io/badge/Live_app-collaborate--asciidoc.fly.dev-8B5CF6?style=for-the-badge&logo=flydotio&logoColor=white" alt="Live app on Fly.io" /></a>
+  <a href="https://deontewattsv1.github.io/Collaborate.asciidoc/playground.html"><img src="https://img.shields.io/badge/Try_the_playground-no_login-0A84FF?style=for-the-badge&logo=github&logoColor=white" alt="Interactive playground on GitHub Pages" /></a>
   &nbsp;
-  <a href="https://deontewattsv1.github.io/Collaborate.asciidoc/"><img src="https://img.shields.io/badge/GitHub_Pages-iPhone_tour-000000?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Pages" /></a>
+  <a href="docs/ACTION.md"><img src="https://img.shields.io/badge/Collaborate_Check-open_source_checker-30D158?style=for-the-badge&logo=githubactions&logoColor=white" alt="Collaborate Check" /></a>
+  &nbsp;
+  <a href="https://collaborate-asciidoc.fly.dev"><img src="https://img.shields.io/badge/Private_workspace-sign--in_required-8B5CF6?style=for-the-badge&logo=flydotio&logoColor=white" alt="Private workspace on Fly.io (sign-in required)" /></a>
 </p>
 
-<p align="center">
-  <img src="docs/dev-guild-demo.png" alt="Dev Guild iOS group chat" width="460" />
-</p>
+## The problem
 
-## Why a room
+When several agents open pull requests against one repository, they often change the same files without knowing it, and nobody notices until a merge fails or a reviewer catches it. A July 2026 preprint ([Xu, Subramanian and Karthik, arXiv:2607.04697](https://arxiv.org/abs/2607.04697)) replayed concurrent agent PRs and observed textual merge conflicts in 41.7% of sampled pairs from *different* agents versus 19.8% from the *same* agent (747 replayed pairs). Cross-agent pairs were only about 0.5% of co-active pairs in that dataset. The study suggests the problem is real, but it does not measure the market or show that any tool prevents it.
+
+Collaborate makes that overlap visible before the merge:
+
+- **Detect overlapping work across open pull requests.** Each open PR is a *lease* over the paths it changes. The earliest-opened PR holds an overlapping lease, and later PRs are told to yield.
+- **Declare file ownership before changes begin.** Put `Collaborate-Claim: PATH` lines in a PR description to reserve files or directories before pushing.
+- **Coordinate tasks and handoffs between agents.** Use the sticky PR comment, the Dev Guild group chat, and the shared terminal.
+- **Track independent reviews against the current commit.** An approval of an older head doesn't count, and a human approval is reported separately from an agent approval.
+- **Keep verifiable collaboration records.** The broker and terminal write a hash-chained, signed log that you can check offline.
+
+A path overlap is not necessarily a Git merge conflict, and Collaborate doesn't claim to prevent every integration failure.
+
+## Try it
+
+**[Open the interactive playground](https://deontewattsv1.github.io/Collaborate.asciidoc/playground.html)** (GitHub Pages, no login). It walks through three scenarios:
+
+1. **Two agents collide.** Claude and Codex both touch `src/auth/session.ts`, and the check shows which PR must yield.
+2. **Agent handoff.** One agent merges, its lease is released, overlapping PRs are re-checked, and the next task moves to another agent.
+3. **Verifiable review.** A human approves the current commit. A new push makes that approval stale until it is renewed.
+
+The playground is static and synthetic. It makes no network calls (enforced by its Content Security Policy), stores nothing, and runs no AI model. Every agent, person, and PR in it is fictional. The source is in [`site/playground.html`](site/playground.html) and [`site/playground.js`](site/playground.js).
+
+## Install the checker
+
+Collaborate Check is the open-source coordination checker in [`internal/ghcoord`](internal/ghcoord). It only reads pull request metadata through the GitHub API and never checks out or runs pull request code.
+
+- **Use it today:** copy [`.github/workflows/collaborate-coordination.yml`](.github/workflows/collaborate-coordination.yml) and [`.github/collaborate-agents.json`](examples/github-action/collaborate-agents.json) into your repository. This repository runs it as its `coordinate` check.
+- **Reusable action (prepared, not yet published):** [`action.yml`](action.yml) packages the same checker as a composite action. No release, tag, or Marketplace listing exists yet, so pin it by a reviewed full commit SHA:
+
+  ```yaml
+  - uses: DeontewattsV1/Collaborate.asciidoc@FULL_COMMIT_SHA
+  ```
+
+  The full example is in [`examples/github-action/coordinate.yml`](examples/github-action/coordinate.yml), and inputs, outputs, permissions, and the security model are in [`docs/ACTION.md`](docs/ACTION.md).
+
+Every run ends in one of four outcomes. An incomplete scan is never reported as a pass.
+
+| Outcome | Exit | Meaning |
+|---|---|---|
+| `PASS` | 0 | A complete scan found no blocking coordination issue |
+| `BLOCKED` | 1 | A confirmed overlap with an earlier PR, or a required review is missing |
+| `ERROR` | 2 | A configuration, permission, or API failure |
+| `INDETERMINATE` | 3 | Incomplete coverage, a stale event head, or a PR that changed during the scan |
+
+## Evidence
+
+What is implemented and tested in this repository today:
+
+- **The checker.** Go tests cover hierarchical overlap, earliest-holder leases, review independence on the current head, human vs. agent approval, incomplete-scan handling, stale and moving heads, closed and merged PRs releasing their lease with reconciliation of overlapping PRs, input validation, deterministic `--json` output (schema `collaborate.check/v1`), and degrading gracefully under a read-only token. See [`internal/ghcoord`](internal/ghcoord).
+- **The action.** Static safety tests ([`tests/test_action.py`](tests/test_action.py)) check that it never interpolates inputs into shell scripts, pins third-party actions by SHA, verifies release checksums, and only drafts releases. The [`action-integration-test`](.github/workflows/action-integration-test.yml) workflow runs it end to end on this repository's PRs with a read-only token.
+- **The playground.** Isolation tests ([`tests/test_playground.py`](tests/test_playground.py)) cover the CSP, the absence of network, storage, and AI calls, and the three scenario outcomes.
+
+What is **not** claimed: no customer pilots, adoption numbers, or measured reduction in rework exist yet. The Agent Conflict Index is a proposed methodology, and no dataset has been collected. Only GitHub-login attribution is verified. Branch-prefix and commit-trailer attribution are self-reported, and GitHub cannot prove which AI model wrote a change.
+
+## How the room works
 
 Most agent tooling optimizes a single agent talking to a single developer. Real work is messier: several agents edit one repository, a human reviews, and nobody can see who is doing what until the merge conflicts arrive.
 
@@ -75,7 +131,7 @@ See [`docs/AGENT-TERMINAL.md`](docs/AGENT-TERMINAL.md) for the protocol and limi
 
 Not every agent can run a local process. Platforms that reach the repository only as a GitHub App, an OAuth app, or under your account still coordinate through pull requests.
 
-`collaborate github-check` treats each open PR as a lease over the paths it changes, reads `Collaborate-Claim:` lines from the description, and fails a later PR that overlaps an earlier one. It identifies agents from `.github/collaborate-agents.json`, checks that approvals come from a different identity, and keeps a sticky comment listing every open agent PR. The room's shared context exists on GitHub too. See [`docs/GITHUB-AGENTS.md`](docs/GITHUB-AGENTS.md).
+`collaborate github-check` (also shipped as the standalone `collaborate-check` binary behind [`action.yml`](action.yml)) treats each open PR as a lease over the paths it changes. It reads `Collaborate-Claim:` lines from the description and blocks a later PR that overlaps an earlier one. It identifies agents from `.github/collaborate-agents.json`, checks that approvals come from a different identity on the current head, and keeps a sticky comment listing every open agent PR. When a PR closes or merges, it re-checks the PRs that overlapped it. The room's shared context exists on GitHub too. See [`docs/GITHUB-AGENTS.md`](docs/GITHUB-AGENTS.md) and [`docs/ACTION.md`](docs/ACTION.md).
 
 ## Quick start
 
@@ -126,6 +182,8 @@ agentterm claim internal/foo && agentterm run -- go test ./internal/foo && agent
 | `cmd/guild`, `internal/guild`, `web/dev-guild` | Dev Guild group chat, characters, personalities, and the owner API |
 | `cmd/agent-registry-check`, `internal/agentregistry`, `.github/agent-registry.json` | Which GitHub identity and branch prefix belongs to which agent; backs the `agent-registry` check |
 | `internal/ghcoord`, `.github/workflows/collaborate-coordination.yml` | PR path leases and `Collaborate-Claim:` lines; backs the `coordinate` check |
+| `cmd/collaborate-check`, `action.yml`, `.github/workflows/release.yml`, `examples/github-action/` | The standalone checker and the reusable Collaborate Check action (prepared, not yet published) |
+| `site/playground.html`, `site/playground.js` | The static, synthetic public playground on GitHub Pages |
 | `.devcontainer`, `scripts/sandbox`, `docs/IPHONE-SANDBOX.md` | Optional iPhone-driven sandbox (Codespaces, or an unused Oracle Always Free VM) |
 | `scripts/check.sh` | The one verification command. CI's `go-verify` runs exactly this |
 | `scripts/repo_hygiene.py` | Guards against recurring repository mistakes |
@@ -138,7 +196,7 @@ agentterm claim internal/foo && agentterm run -- go test ./internal/foo && agent
 
 ## Verification
 
-`scripts/check.sh` runs the same steps as the required `go-verify` check: ruleset policy validation, repository hygiene, Python tests, Dev Guild tests and a production build, `gofmt`, `go vet`, uncached Go tests, the race detector, all four binaries, `actionlint` when installed, and a whitespace check.
+`scripts/check.sh` runs the same steps as the required `go-verify` check: ruleset policy validation, repository hygiene, Python tests, Dev Guild tests and a production build, `gofmt`, `go vet`, uncached Go tests, the race detector, all five binaries (including the standalone `collaborate-check`), `actionlint` when installed, and a whitespace check.
 
 The Go suite covers conflicting claims, lease expiry and takeover, SQLite close/reopen persistence, signed-request replay rejection, hierarchical lease overlap, key rotation and revocation, session-scoped review access, trusted receipt derivation, gate pass/fail, unleased and symlink-escape write rejection, independent review, and append-only export recovery. It does not perform a real TLS handshake or kill and restart a broker process end to end.
 
@@ -154,6 +212,7 @@ The verified properties and the remaining gaps are documented in [`SECURITY.md`]
 
 | Document | Purpose |
 |---|---|
+| [`docs/ACTION.md`](docs/ACTION.md) | Collaborate Check: the reusable action, outcomes, exit codes, JSON schema, release process |
 | [`docs/CLI.md`](docs/CLI.md) | Command reference and local broker walkthrough |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Current Fly hosting, costs, deploy/rollback, and roadmap |
 | [`docs/SECRETS.md`](docs/SECRETS.md) | Secure secret drop: chat redaction, encrypted vault, agent grants, sync |

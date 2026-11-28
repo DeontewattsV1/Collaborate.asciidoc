@@ -1,0 +1,74 @@
+name: action-integration-test
+
+# Exercises the reusable action (action.yml at the repository root) end to
+# end on this repository's own pull requests. It uses the plain pull_request
+# event with a read-only token, so fork PRs are safe: the action under test
+# comes from the PR, but the token cannot write and no secrets are exposed.
+
+on:
+  pull_request:
+    paths:
+      - action.yml
+      - cmd/collaborate-check/**
+      - internal/ghcoord/**
+      - go.mod
+      - .github/workflows/action-integration-test.yml
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to check
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: action-integration-test-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  run-action:
+    name: run-action
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the action under test
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Run Collaborate Check (read-only, no comment)
+        id: check
+        continue-on-error: true
+        uses: ./
+        with:
+          pr-number: ${{ inputs.pr || '' }}
+          comment: "false"
+          fail-on-indeterminate: "false"
+      - name: Assert outputs and report schema
+        env:
+          OUTCOME: ${{ steps.check.outputs.outcome }}
+          EXIT_CODE: ${{ steps.check.outputs.exit-code }}
+          HEAD_SHA: ${{ steps.check.outputs.head-sha }}
+          REPORT: ${{ steps.check.outputs.report }}
+        run: |
+          set -euo pipefail
+          echo "outcome=$OUTCOME exit=$EXIT_CODE head=$HEAD_SHA"
+          case "$OUTCOME" in PASS|BLOCKED|INDETERMINATE) ;; *) echo "::error::unexpected outcome '$OUTCOME'"; exit 1 ;; esac
+          [[ "$EXIT_CODE" =~ ^[013]$ ]] || { echo "::error::unexpected exit code '$EXIT_CODE'"; exit 1; }
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::head-sha output missing"; exit 1; }
+          test "$(jq -r .schema_version "$REPORT")" = "collaborate.check/v1"
+          test "$(jq -r .outcome "$REPORT")" = "$OUTCOME"
+          test "$(jq -r .head_sha "$REPORT")" = "$HEAD_SHA"
+          jq -e '.coverage | has("complete") and has("gaps")' "$REPORT" > /dev/null
+      - name: Invalid input fails closed with exit 2
+        id: invalid
+        continue-on-error: true
+        uses: ./
+        with:
+          pr-number: "not-a-number"
+          comment: "false"
+      - name: Assert invalid input was rejected
+        env:
+          OUTCOME: ${{ steps.invalid.outcome }}
+        run: test "$OUTCOME" = failure

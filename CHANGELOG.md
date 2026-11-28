@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+- **Hardened coordination checker.** `github-check` now ends in one of four
+  outcomes: `PASS`, `BLOCKED`, `INDETERMINATE`, or `ERROR`, with exit codes
+  0/1/3/2. An incomplete scan (more open PRs than `--max-open`, which now
+  defaults to 100; a truncated listing; a stale event head; or a PR that
+  changed mid-scan) is `INDETERMINATE` and never a pass. `--json` output is
+  deterministic and versioned (`collaborate.check/v1`), reports the checked
+  head SHA, PR state (`open`/`closed`/`merged`), and scan coverage, and
+  separates human approval from agent approval. Closed and merged PRs release
+  their lease, and `--reconcile` re-checks overlapping PRs. Also new:
+  `--head-sha`, `--set-status` (commit status on the current head),
+  `--registry-ref` (read the registry through the API), `--registry-optional`,
+  `--output` (`$GITHUB_OUTPUT`), and strict input validation (HTTPS-only API
+  URL, `OWNER/NAME`, SHA, ref, and range checks).
+- **Reusable GitHub Action (prepared, not published).** The root
+  [`action.yml`](action.yml) is a composite action that builds the stdlib-only
+  `cmd/collaborate-check` from its own pinned source, or downloads a
+  checksum-verified release binary. It never runs pull request code, works on
+  `pull_request` with read-only tokens, and comments or sets statuses only when
+  permitted. Adds a tag-triggered `release` workflow (cross-platform binaries,
+  checksums, provenance attestations, draft release only),
+  `action-integration-test`, examples in `examples/github-action/`, and
+  [`docs/ACTION.md`](docs/ACTION.md). No tag, release, or Marketplace listing
+  has been created.
+- **Public playground.** [`site/playground.html`](site/playground.html) on
+  GitHub Pages walks through three synthetic scenarios: two agents collide, an
+  agent handoff, and a verifiable review. No login, no network (CSP
+  `connect-src 'none'`), no storage, and no AI calls.
+- **Demo isolation.** With `GUILD_DEMO=1`, durable rooms and the secret vault
+  now refuse to open (503), and the chat never reads or writes Postgres, even
+  if `DATABASE_URL` is set. `GUILD_DEMO_SCRIPTED=1` keeps the server demo
+  fully scripted, with no model calls.
+- **README** restructured around the problem, the playground, installation,
+  and evidence, with explicit limits on what is claimed.
+
 - **Secure secret drop.** Keys pasted into the chat are intercepted in the
   browser and on the server and never stored, prompted or logged raw. Owners
   save them through a glass **Add secret** sheet (name, source link, provider,

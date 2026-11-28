@@ -1,0 +1,37 @@
+# Example: copy to .github/workflows/collaborate-check.yml in your repository.
+#
+# NOT PUBLISHED YET: replace FULL_COMMIT_SHA with a reviewed full commit SHA of
+# DeontewattsV1/Collaborate.asciidoc (and the comment with its tag once a
+# release exists). Pin by full SHA, never by a moving branch.
+#
+# pull_request_target runs with your repository's token, which is why this
+# workflow never checks out the pull request: the action reads PR metadata
+# through the API only.
+name: Collaborate Check
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, ready_for_review, converted_to_draft, closed]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  # statuses: write   # uncomment together with set-status: "true"
+
+concurrency:
+  group: collaborate-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  coordinate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: DeontewattsV1/Collaborate.asciidoc@FULL_COMMIT_SHA # vX.Y.Z (not published yet)
+        with:
+          comment: "true"
+          reconcile: "true"
+          # set-status: "true"        # make collaborate/coordination a required status
+          # fail-on-indeterminate: "true"
