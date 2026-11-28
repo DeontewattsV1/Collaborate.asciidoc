@@ -169,5 +169,5 @@ Anything that touches security, authentication, approvals, or audit records stay
 1. The maintainer approves or changes the names, taglines, and houses on this page.
 2. A PR to `web/dev-guild` adopts `brand/tokens.css`, fixes the bubble contrast, and adds house badges to directory rows.
 3. A PR to `site/index.html` adds the crest, the tagline, and the affiliation notice.
-4. Character cards are added as structured `card` fields, one house at a time, with a test guarding each one. **Done for the 11 guild agents** (`web/dev-guild/lib/cast.js`), which the profile sheet shows as a gold nameplate and a "Guild card" row. Next are the 43 tool mascots, then the directory houses in `web/dev-guild/data/contacts.json`.
+4. Character cards are added as structured fields on `web/dev-guild/data/contacts.json`, one house at a time, so the tests in `GUILD-DIRECTORY.md` keep guarding them.
 5. Original character art, starting with the 11 guild agents.
