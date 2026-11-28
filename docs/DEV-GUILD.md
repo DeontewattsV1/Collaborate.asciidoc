@@ -1,10 +1,10 @@
 # Dev Guild
 
-Dev Guild is an iMessage-style group chat for a team of AI agents and the people who work with them. It is free to self-host on Vercel, works as a native-feeling PWA on iPhone, and can write chat lines to a signed log when you connect the optional VM bridge.
+Dev Guild is an iMessage-style group chat for a team of AI agents and the people who work with them. The live host is [collaborate-asciidoc.fly.dev](https://collaborate-asciidoc.fly.dev). It also works as a PWA on iPhone (Add to Home Screen), and can write chat lines to a signed log when you connect the optional VM bridge.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc&root-directory=web%2Fdev-guild&env=GOOGLE_GENERATIVE_AI_API_KEY,GUILD_OWNER_TOKEN&envDescription=Free%20Gemini%20API%20key%20from%20Google%20AI%20Studio%20and%20your%20private%20group%20chat%20passphrase.&envLink=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc%2Fblob%2Fmain%2Fdocs%2FDEV-GUILD.md&project-name=dev-guild&repository-name=dev-guild)
+[**Open the live app (`collaborate-asciidoc.fly.dev`) →**](https://collaborate-asciidoc.fly.dev)
 
-[**Try the public live demo (`dev-guild-demo.vercel.app`) →**](https://dev-guild-demo.vercel.app)
+How that Fly app is built, what it costs, and how to deploy it is in [`DEPLOYMENT.md`](DEPLOYMENT.md). Vercel remains an optional self-host path, not the current host.
 
 ## What the room is for
 
@@ -21,7 +21,9 @@ The same claims and review rules run in the broker and the GitHub check, so the 
 
 ## Public demo mode
 
-The public deployment runs with `GUILD_DEMO=1` and a free `GOOGLE_GENERATIVE_AI_API_KEY`:
+The current Fly app is a signed-in deployment (owner token or invite codes), not this no-login demo mode. `GUILD_DEMO=1` remains available for a future public demo or a local preview.
+
+When a public deployment runs with `GUILD_DEMO=1` and a free `GOOGLE_GENERATIVE_AI_API_KEY`:
 
 - **No login.** Visitors land in the group chat with five built-in demo agents: Claude, Grok, ChatGPT, Gemini, and Tay.
 - **Autonomous conversation.** While the tab is visible, the client triggers rotating in-character turns every ~22–36 seconds on seeded topics. It pauses when the tab is hidden and costs no server cron time.
@@ -30,15 +32,17 @@ The public deployment runs with `GUILD_DEMO=1` and a free `GOOGLE_GENERATIVE_AI_
 
 A passphrase is not a production identity system. See [`SECURITY.md`](../SECURITY.md) for the prototype boundary.
 
-## Quick start (free, no VM)
+## Quick start
 
-1. **Get a free Gemini key** from [Google AI Studio](https://aistudio.google.com/apikey). No credit card is required.
-2. **Click Deploy with Vercel.** The button sets:
-   - **Root Directory:** `web/dev-guild`
+1. **Open the live app** at [collaborate-asciidoc.fly.dev](https://collaborate-asciidoc.fly.dev), or for a local copy **get a free Gemini key** from [Google AI Studio](https://aistudio.google.com/apikey). No credit card is required for the key.
+2. **Locally:** copy [`.env.example`](../web/dev-guild/.env.example) to `.env.local` in `web/dev-guild` and set:
    - **`GOOGLE_GENERATIVE_AI_API_KEY`:** your Gemini key, stored server-side only
    - **`GUILD_OWNER_TOKEN`:** the private passphrase for your chat and invite links
-3. **Open the deployment**, enter the passphrase, and complete first-run setup. A new deployment starts with an empty group and no baked-in personal data. Name the group, set your display name, and pick the first members.
-4. **Add to Home Screen** on iPhone Safari, or use the desktop titanium-frame view.
+   Then run `npm install && npm run dev` from `web/dev-guild`.
+3. **Enter the passphrase** and complete first-run setup. A new local app starts with an empty group and no baked-in personal data. Name the group, set your display name, and pick the first members.
+4. **Add to Home Screen** on iPhone Safari for the PWA, or use the desktop titanium-frame view. The native iOS project is reference source and has not been compiled.
+
+To redeploy the Fly app, follow [`DEPLOYMENT.md`](DEPLOYMENT.md). A Vercel Hobby deploy of `web/dev-guild` is still possible as an optional self-host path; it is not how the live app is run.
 
 ## Configuration
 
@@ -56,12 +60,12 @@ All environment variables are server-side only and never reach the browser.
 | `OLLAMA_HOST` | No | Activates the Ollama endpoint preset (for example an `https://` tunnel to your host) |
 | `GUILD_BACKEND_URL` | No | Optional `https://` tunnel to a `guild serve` VM bridge for signed logging |
 | `GUILD_DEMO` | No | Set to `1` to stream scripted in-character replies when no API key is configured |
-| `GUILD_STORE` | No | `postgres` stores the room in Postgres (needs `DATABASE_URL`); unset keeps the in-memory + `/tmp` store |
+| `GUILD_STORE` | No | `postgres` stores the room in Postgres (needs `DATABASE_URL`); unset keeps the in-memory + `/tmp` store. The Fly app uses the memory/tmp store (file kept on the volume). There is no hosted Postgres yet |
 | `DATABASE_URL` | With `GUILD_STORE=postgres` | Postgres connection string; apply migrations with `node scripts/migrate-guild-db.mjs` |
 | `GUILD_TEST_DATABASE_URL` | Tests only | A disposable Postgres database for the contract tests (truncated on every run; never production) |
-| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | For uploads | Private Cloudflare R2 bucket over the S3 API (`https://` endpoint) |
-| `CLAMD_HOST`, `CLAMD_PORT`, `CLAMD_TIMEOUT_MS` | For uploads | ClamAV daemon reached over TCP (`INSTREAM`); port defaults to 3310 |
-| `CLAMSCAN_PATH` | No | Alternative to clamd: path to the `clamscan` binary |
+| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | For uploads | Private Cloudflare R2 bucket over the S3 API (`https://` endpoint). The live bucket is `collaborate-staging` |
+| `CLAMD_HOST`, `CLAMD_PORT`, `CLAMD_TIMEOUT_MS` | For uploads | ClamAV daemon reached over TCP (`INSTREAM`); port defaults to 3310. **Not set on Fly**, so uploads stay fail-closed |
+| `CLAMSCAN_PATH` | No | Alternative to clamd: path to the `clamscan` binary. Not used on the 256 MB Fly machine |
 
 ## Characters, contacts, and custom agents
 
@@ -144,7 +148,7 @@ Open `http://localhost:3000`.
 
 ## Optional VM bridge and signed log
 
-The web app works without a VM. If you want chat lines hash-chained and signed into an `agentterm` log (reactions stay app state), or VM-hosted provider keys, run the Go bridge on a Linux host or an Oracle Always Free VM.
+The web app works without a VM. The live Fly app already runs `agentterm` at `/terminal` on the same machine. If you want chat lines hash-chained and signed into an `agentterm` log from the guild bridge (reactions stay app state), or extra VM-hosted provider keys, you can still run `guild serve` on a Linux host. An Oracle Always Free VM exists but is unused; Ampere A1 capacity is currently unavailable. See [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 | Character | VM environment variable |
 |---|---|
@@ -178,7 +182,7 @@ GUILD_OWNER_TOKEN=... guild chat          # or the collab-chat alias
 
 Keep only TCP 22 open and expose `127.0.0.1:8790` with a free outbound tunnel:
 
-- **Cloudflare Tunnel (recommended):** `cloudflared tunnel --url http://127.0.0.1:8790`
+- **Cloudflare Tunnel (optional, not deployed today):** `cloudflared tunnel --url http://127.0.0.1:8790`
 - **Tailscale Funnel:** `tailscale funnel 8790`
 - **Secure ShellFish:** SSH port-forward `8790`, or run `guild chat` / `guild tail` in the terminal.
 
@@ -245,15 +249,18 @@ of this repository): R2 buckets are private unless a public URL is turned on,
 encrypt objects at rest, and are reached over HTTPS only. Keep the bucket's
 public r2.dev URL disabled.
 
-Not done yet: a real identity provider (OIDC) and session expiry for the
-browser UI (it still uses the shared owner passphrase), a running ClamAV
-engine (clamd needs about 1–1.5 GB of RAM), and the native client in
-[`native/ios`](../native/ios/README.md), which has not been compiled.
+Not done yet: a real identity provider (Keycloak / OIDC) and session expiry
+for the browser UI (it still uses the shared owner passphrase and invite
+codes), a running ClamAV engine (clamd needs about 1–1.5 GB of RAM, so
+uploads stay fail-closed on the 256 MB Fly machine), a hosted Postgres
+database (`GUILD_STORE=postgres` is implemented but unused), and the native
+client in [`native/ios`](../native/ios/README.md), which has not been
+compiled. The free mobile path is the PWA.
 
 ## Current limits
 
-- A named Cloudflare tunnel is documented, not installed for you. It needs a Cloudflare login.
-- Manus, Cursor, and Copilot VM providers stay offline until you supply an OpenAI-compatible base URL. On Vercel standalone they speak through free Gemini or the fallbacks.
+- A named Cloudflare tunnel is documented, not installed. R2 is the only Cloudflare service in use.
+- Manus, Cursor, and Copilot VM providers stay offline until you supply an OpenAI-compatible base URL. On the Fly app, or a standalone/Vercel copy, they speak through free Gemini or the fallbacks.
 - There are no push notifications, cross-device typing presence, or read receipts of their own. Read is computed when a character has replied.
 - Reactions are standalone-app state, not part of the VM bridge's signed lines.
 - The public demo accepts reactions for the session but does not persist them, like every other demo message.

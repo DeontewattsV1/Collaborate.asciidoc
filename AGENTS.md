@@ -12,7 +12,8 @@ This repository is an experimental multi-agent collaboration system, **not a pro
 | `cmd/guild`, `internal/guild`, `web/dev-guild` | Dev Guild group chat, characters, personalities, and the owner API |
 | `cmd/agent-registry-check`, `internal/agentregistry`, `.github/agent-registry.json` | Which GitHub identity and branch prefix belongs to which agent; backs the `agent-registry` check |
 | `internal/ghcoord`, `.github/workflows/collaborate-coordination.yml` | PR path leases and `Collaborate-Claim:` lines; backs the `coordinate` check |
-| `.devcontainer`, `scripts/sandbox/bootstrap-ubuntu.sh`, `docs/IPHONE-SANDBOX.md` | Free Codespaces or Oracle Always Free sandbox driven from an iPhone or any SSH client |
+| `docs/DEPLOYMENT.md` | Current hosted setup: Fly app `collaborate-asciidoc`, costs, deploy and rollback |
+| `.devcontainer`, `scripts/sandbox/bootstrap-ubuntu.sh`, `docs/IPHONE-SANDBOX.md` | Optional iPhone-driven sandbox (Codespaces, or an unused Oracle Always Free VM) |
 | `scripts/check.sh` | **The one verification command.** CI's `go-verify` runs exactly this |
 | `scripts/repo_hygiene.py` | Guards against recurring repository mistakes |
 | `docs/ENGINEERING-NOTES.md` | Durable rules distilled from past mistakes |

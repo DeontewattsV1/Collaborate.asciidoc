@@ -1,6 +1,12 @@
 # Keys for the Dev Guild
 
-Provider keys stay in GitHub Environments. The guild bridge on the VM reads them from the process environment. They are never sent to the browser.
+The live Fly app's model key and owner token are Fly secrets, not GitHub
+Environment secrets. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the names
+that are set there.
+
+The following GitHub Environments still apply to the optional `guild`
+bridge and to Actions-based provider workflows. They are never sent to
+the browser.
 
 ## 1. Create the environments
 
@@ -21,12 +27,12 @@ The script creates each environment, limits it to `main`, sets `MODEL_NAME`, and
 
 GitHub will not show a secret back. On the VM, export the value as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `XAI_API_KEY`. See [`DEV-GUILD.md`](DEV-GUILD.md).
 
-The primary model path is the free Gemini API. Set `GOOGLE_GENERATIVE_AI_API_KEY` as a repository Actions secret and as a server-side Vercel environment variable. Optional `GROQ_API_KEY` and `OPENROUTER_API_KEY` are the next free fallbacks. The VM keys above answer when those are unset or exhausted. See [`DEV-GUILD.md`](DEV-GUILD.md).
+The primary model path is the free Gemini API. On the live app, set `GOOGLE_GENERATIVE_AI_API_KEY` as a Fly secret (server-side only). The same name can be set as a repository Actions secret, or as a server-side variable on an optional Vercel self-host. Optional `GROQ_API_KEY` and `OPENROUTER_API_KEY` are the next free fallbacks. The VM keys above answer when those are unset or exhausted, if you still run the bridge. See [`DEV-GUILD.md`](DEV-GUILD.md) and [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ## Never
 
 - Never paste a key into a file that is committed, an issue, a PR, a workflow input, or a chat. If one was exposed, rotate it.
-- `GOOGLE_GENERATIVE_AI_API_KEY` may be set on Vercel, server-side only. The VM's per-provider keys stay on the VM.
+- `GOOGLE_GENERATIVE_AI_API_KEY` may be set on Fly (the current host) or, for an optional self-host, on Vercel, always server-side only. Per-provider keys for a guild bridge stay on that VM.
 
 ## Container image
 
@@ -36,4 +42,6 @@ Every push to `main` publishes the agent terminal as a signed image, `ghcr.io/de
 docker run --rm -p 8787:8787 -v agentterm-data:/data ghcr.io/deontewattsv1/collaborate.asciidoc:main
 ```
 
-The server listens on port 8787 inside the container and runs as a non-root user. Put TLS in front before exposing it. The guild bridge on the Oracle VM is loopback plus a tunnel, described in [`DEV-GUILD.md`](DEV-GUILD.md).
+The GHCR image is the agentterm-only build. The live Fly app uses a combined image (Next.js + agentterm + a proxy on port 8080), described in [`DEPLOYMENT.md`](DEPLOYMENT.md). The terminal UI is at `/terminal`; existing agentterm API paths stay at `/api/*`.
+
+A guild bridge on an Oracle VM is optional and unused today (loopback plus a tunnel). See [`DEV-GUILD.md`](DEV-GUILD.md).

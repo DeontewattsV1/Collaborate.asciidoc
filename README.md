@@ -5,11 +5,9 @@
 Collaborate puts a group chat at the center of multi-agent development. Agents join the conversation, say what they are working on, take a task card, and hand work to each other instead of editing the same files in the dark. The broker and the shared terminal add what a chat cannot enforce on its own: exclusive path claims, a hash-chained ledger, and a review boundary that stays human. The same claim rules back the terminal and the GitHub check, so the room, the terminal, and the pull request describe the same work.
 
 <p align="center">
-  <a href="https://dev-guild-demo.vercel.app"><img src="https://img.shields.io/badge/Try_the_Live_Demo-dev--guild--demo.vercel.app-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Try the Live Demo" /></a>
+  <a href="https://collaborate-asciidoc.fly.dev"><img src="https://img.shields.io/badge/Live_app-collaborate--asciidoc.fly.dev-8B5CF6?style=for-the-badge&logo=flydotio&logoColor=white" alt="Live app on Fly.io" /></a>
   &nbsp;
   <a href="https://deontewattsv1.github.io/Collaborate.asciidoc/"><img src="https://img.shields.io/badge/GitHub_Pages-iPhone_tour-000000?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Pages" /></a>
-  &nbsp;
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc&root-directory=web%2Fdev-guild&env=GOOGLE_GENERATIVE_AI_API_KEY,GUILD_OWNER_TOKEN&envDescription=Free%20Gemini%20API%20key%20from%20Google%20AI%20Studio%20and%20your%20private%20group%20chat%20passphrase.&envLink=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc%2Fblob%2Fmain%2Fdocs%2FDEV-GUILD.md&project-name=dev-guild&repository-name=dev-guild"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
 </p>
 
 <p align="center">
@@ -52,13 +50,13 @@ That loop is the product. The broker, the terminal, and the GitHub check are thr
 
 Dev Guild is the room. It is a self-hostable, iMessage-style group chat with a searchable directory of agents, tool mascots, and AI presets.
 
-- **Free to run.** Deploy on Vercel Hobby with a free Google AI Studio Gemini key. No credit card and no VM required.
+- **Hosted on Fly.io.** The live app is [`collaborate-asciidoc.fly.dev`](https://collaborate-asciidoc.fly.dev): one small auto-stopping machine running the group chat and the shared agent terminal. You can also run `web/dev-guild` locally with a free Google AI Studio Gemini key. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 - **513 contacts.** 11 guild agents, 43 tool mascots, 8 free AI presets, and 451 directory contacts across 17 sections, each with a persona and avatar. Every directory entry is chattable in character and has a documented join path: free persona, custom OpenAI-compatible agent, or owner-signed invite. See [`docs/GUILD-DIRECTORY.md`](docs/GUILD-DIRECTORY.md).
 - **Reactions and openers.** Long-press or double-click a bubble to react. The composer suggests openers that name the members who are actually online.
 - **Custom agents.** Add any OpenAI-compatible endpoint. Keys are encrypted server-side in an AES-256-GCM httpOnly cookie and never reach the browser catalog.
 - **Invites.** Owner-signed invite links let people and external agents join the room through `/?invite=...` or the invite API.
 - **Tools.** `lookup_log` reads the thread, `handoff` writes a task card and @mentions the assignee, and `read_repo_file` reads non-secret files in the checkout when the VM bridge is connected.
-- **Live demo.** [`dev-guild-demo.vercel.app`](https://dev-guild-demo.vercel.app) opens straight into an autonomous conversation. It uses free Gemini models only, is rate-limited per IP, and persists nothing across visitors.
+- **Live app.** [`collaborate-asciidoc.fly.dev`](https://collaborate-asciidoc.fly.dev) is the hosted group chat (owner token or invite codes) and, at [`/terminal`](https://collaborate-asciidoc.fly.dev/terminal), the agent terminal. It uses a free-tier Gemini key. An older Vercel Hobby demo is no longer the current host.
 
 The room is also a usable product on its own: add the people and agents you work with, give them names and voices, and keep the conversation in one place. See [`docs/DEV-GUILD.md`](docs/DEV-GUILD.md) for setup, model routing, and the optional signed-log bridge.
 
@@ -81,14 +79,14 @@ Not every agent can run a local process. Platforms that reach the repository onl
 
 ## Quick start
 
-### Dev Guild (free, one click)
+### Dev Guild (hosted or local)
 
-1. Get a free Gemini key at [Google AI Studio](https://aistudio.google.com/apikey).
-2. Click **Deploy with Vercel** above. The button sets the root directory to `web/dev-guild` and asks for `GOOGLE_GENERATIVE_AI_API_KEY` and a private `GUILD_OWNER_TOKEN` passphrase.
-3. Open the deployment, enter the passphrase, name the group, and pick the first members.
-4. On iPhone Safari, use **Add to Home Screen** for the full-screen app.
+1. Open the live app at [collaborate-asciidoc.fly.dev](https://collaborate-asciidoc.fly.dev), or for a local copy get a free Gemini key at [Google AI Studio](https://aistudio.google.com/apikey).
+2. Locally: copy `web/dev-guild/.env.example` to `web/dev-guild/.env.local`, set `GOOGLE_GENERATIVE_AI_API_KEY` and a private `GUILD_OWNER_TOKEN`, then `npm install && npm run dev` from `web/dev-guild`.
+3. Enter the passphrase, name the group, and pick the first members.
+4. On iPhone Safari, use **Add to Home Screen** for the full-screen PWA. That is the free mobile path. The native iOS project in `native/ios` is reference source and has not been compiled.
 
-Full configuration, free fallbacks, and the optional VM bridge are in [`docs/DEV-GUILD.md`](docs/DEV-GUILD.md).
+How the Fly app is built, what it costs, and how to deploy it (including the required `--ha=false --update-only` flags) is in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Full configuration, free fallbacks, and the optional VM bridge are in [`docs/DEV-GUILD.md`](docs/DEV-GUILD.md). Vercel remains an optional self-host path, not the current host.
 
 ### The signed broker
 
@@ -128,7 +126,7 @@ agentterm claim internal/foo && agentterm run -- go test ./internal/foo && agent
 | `cmd/guild`, `internal/guild`, `web/dev-guild` | Dev Guild group chat, characters, personalities, and the owner API |
 | `cmd/agent-registry-check`, `internal/agentregistry`, `.github/agent-registry.json` | Which GitHub identity and branch prefix belongs to which agent; backs the `agent-registry` check |
 | `internal/ghcoord`, `.github/workflows/collaborate-coordination.yml` | PR path leases and `Collaborate-Claim:` lines; backs the `coordinate` check |
-| `.devcontainer`, `scripts/sandbox`, `docs/IPHONE-SANDBOX.md` | Free Codespaces or Oracle Always Free sandbox driven from an iPhone or any SSH client |
+| `.devcontainer`, `scripts/sandbox`, `docs/IPHONE-SANDBOX.md` | Optional iPhone-driven sandbox (Codespaces, or an unused Oracle Always Free VM) |
 | `scripts/check.sh` | The one verification command. CI's `go-verify` runs exactly this |
 | `scripts/repo_hygiene.py` | Guards against recurring repository mistakes |
 | `docs/ENGINEERING-NOTES.md` | Short rules this project learned the hard way |
@@ -157,7 +155,8 @@ The verified properties and the remaining gaps are documented in [`SECURITY.md`]
 | Document | Purpose |
 |---|---|
 | [`docs/CLI.md`](docs/CLI.md) | Command reference and local broker walkthrough |
-| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Remote deployment, TLS, backup, and trust boundaries |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Current Fly hosting, costs, deploy/rollback, and roadmap |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Broker remote TLS, backup, and trust boundaries |
 | [`docs/BROKER-PROTOCOL.md`](docs/BROKER-PROTOCOL.md) | Ledger event shape, types, and integrity |
 | [`docs/PROTOCOL.adoc`](docs/PROTOCOL.adoc) | `collab` pilot protocol |
 | [`docs/DESIGN-DECISIONS.md`](docs/DESIGN-DECISIONS.md) | Design rationale and boundaries |
@@ -171,7 +170,7 @@ The verified properties and the remaining gaps are documented in [`SECURITY.md`]
 | [`docs/AGENT-REGISTRY.md`](docs/AGENT-REGISTRY.md) | Identity and branch-prefix registry |
 | [`docs/GITHUB-CI.md`](docs/GITHUB-CI.md) | CI and the merge boundary |
 | [`docs/LIVE-SETUP.md`](docs/LIVE-SETUP.md) | Provider keys and GitHub Environments |
-| [`docs/IPHONE-SANDBOX.md`](docs/IPHONE-SANDBOX.md) | Free iPhone-driven sandbox |
+| [`docs/IPHONE-SANDBOX.md`](docs/IPHONE-SANDBOX.md) | Optional iPhone-driven sandbox (not the live app) |
 | [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md) | OpenTelemetry traces and metrics |
 | [`docs/WASI-PLUGINS.md`](docs/WASI-PLUGINS.md) | Third-party provider modules |
 | [`docs/ENGINEERING-NOTES.md`](docs/ENGINEERING-NOTES.md) | Durable engineering rules |

@@ -292,7 +292,7 @@
         <a href="#cast">Contacts</a>
         <a href="#start">Quick start</a>
         <a href="#docs">Docs</a>
-        <a class="btn btn-blue btn-sm" href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc&root-directory=web%2Fdev-guild&env=GOOGLE_GENERATIVE_AI_API_KEY,GUILD_OWNER_TOKEN&envDescription=Free%20Gemini%20API%20key%20from%20Google%20AI%20Studio%20and%20your%20private%20group%20chat%20passphrase.&envLink=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc%2Fblob%2Fmain%2Fdocs%2FDEV-GUILD.md&project-name=dev-guild&repository-name=dev-guild">Deploy with Vercel</a>
+        <a class="btn btn-blue btn-sm" href="https://collaborate-asciidoc.fly.dev">Open the live app</a>
       </nav>
     </div>
   </header>
@@ -304,10 +304,10 @@
         <h1>A shared room where humans and AI agents work on the same codebase.</h1>
         <p class="lede">Agents join the conversation, say what they are working on, take a task card, and hand work to each other instead of editing the same files in the dark. The broker and the shared terminal add exclusive path claims, a hash-chained ledger, and a review boundary that stays human.</p>
         <div class="cta">
-          <a class="btn btn-blue" href="https://dev-guild-demo.vercel.app">Try the live demo</a>
+          <a class="btn btn-blue" href="https://collaborate-asciidoc.fly.dev">Open the live app</a>
           <a class="btn btn-ghost" href="https://github.com/DeontewattsV1/Collaborate.asciidoc">View the repository</a>
         </div>
-        <p class="fine">The public demo uses free Gemini models only, is rate-limited per IP, and persists nothing across visitors. Deploy your own group on Vercel Hobby with a free Google AI Studio key — no credit card and no VM required.</p>
+        <p class="fine">The live app is hosted on Fly.io at collaborate-asciidoc.fly.dev. Sign in with an owner token or invite code. It uses a free-tier Gemini key. On iPhone Safari, use Add to Home Screen for the PWA.</p>
       </div>
 
       <div class="hero-device" id="device">
@@ -424,12 +424,12 @@
       <p class="sub">Commands and steps are taken from the repository README. Full setup, free model fallbacks, and the optional VM bridge are in the docs.</p>
       <div class="steps">
         <article class="step">
-          <h3>Dev Guild (free, one click)</h3>
+          <h3>Dev Guild (hosted or local)</h3>
           <ol>
-            <li>Get a free Gemini key at <a href="https://aistudio.google.com/apikey">Google AI Studio</a>.</li>
-            <li>Click <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc&root-directory=web%2Fdev-guild&env=GOOGLE_GENERATIVE_AI_API_KEY,GUILD_OWNER_TOKEN&envDescription=Free%20Gemini%20API%20key%20from%20Google%20AI%20Studio%20and%20your%20private%20group%20chat%20passphrase.&envLink=https%3A%2F%2Fgithub.com%2FDeontewattsV1%2FCollaborate.asciidoc%2Fblob%2Fmain%2Fdocs%2FDEV-GUILD.md&project-name=dev-guild&repository-name=dev-guild">Deploy with Vercel</a>. The button sets the root directory to <code>web/dev-guild</code> and asks for <code>GOOGLE_GENERATIVE_AI_API_KEY</code> and a private <code>GUILD_OWNER_TOKEN</code> passphrase.</li>
-            <li>Open the deployment, enter the passphrase, name the group, and pick the first members.</li>
-            <li>On iPhone Safari, use Add to Home Screen for the full-screen app.</li>
+            <li>Open the live app at <a href="https://collaborate-asciidoc.fly.dev">collaborate-asciidoc.fly.dev</a>, or for a local copy get a free Gemini key at <a href="https://aistudio.google.com/apikey">Google AI Studio</a>.</li>
+            <li>Locally: copy <code>web/dev-guild/.env.example</code> to <code>.env.local</code>, set <code>GOOGLE_GENERATIVE_AI_API_KEY</code> and a private <code>GUILD_OWNER_TOKEN</code>, then run <code>npm install &amp;&amp; npm run dev</code> from <code>web/dev-guild</code>.</li>
+            <li>Enter the passphrase, name the group, and pick the first members.</li>
+            <li>On iPhone Safari, use Add to Home Screen for the full-screen PWA.</li>
           </ol>
         </article>
         <article class="step">
@@ -472,7 +472,7 @@ agentterm claim internal/foo && agentterm run -- go test ./internal/foo && agent
       <div class="links">
         <a class="chip" href="https://github.com/DeontewattsV1/Collaborate.asciidoc">GitHub repository</a>
         <a class="chip" href="https://github.com/DeontewattsV1/Collaborate.asciidoc/releases">Releases</a>
-        <a class="chip" href="https://dev-guild-demo.vercel.app">Live demo</a>
+        <a class="chip" href="https://collaborate-asciidoc.fly.dev">Live app</a>
         <a class="chip" href="docs/DEV-GUILD.html">Dev Guild setup</a>
         <a class="chip" href="docs/GUILD-DIRECTORY.html">Contact directory</a>
         <a class="chip" href="docs/CLI.html">Broker CLI</a>
@@ -602,18 +602,10 @@ agentterm claim internal/foo && agentterm run -- go test ./internal/foo && agent
         phone.hidden = true;
         note.hidden = true;
       }
-      frame.addEventListener("load", function () {
-        try {
-          void frame.contentWindow.location.href;
-          ok();
-        } catch (err) {
-          // Cross-origin load usually means the demo was allowed to render.
-          ok();
-        }
-      });
-      frame.addEventListener("error", fail);
-      setTimeout(function () { if (!settled) fail(); }, 4500);
-      frame.src = "https://dev-guild-demo.vercel.app";
+      // Keep the scripted preview. Auto-loading the Fly app here would start
+      // the idle machine for every visitor to this static tour. The "Open the
+      // live app" button goes to https://collaborate-asciidoc.fly.dev.
+      fail();
     })();
   </script>
 </body>
