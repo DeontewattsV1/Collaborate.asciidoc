@@ -101,6 +101,7 @@ export function ProfileSheet({ profile, demoMode, groupMemberSet, onClose, onOpe
         <div className="hero">
           <Avatar avatar={profile.avatar} emoji={profile.emoji} color={profile.color} name={profile.name} size="lg" />
           <h2 style={{ margin: "4px 0 0" }}>{profile.name}</h2>
+          {profile.card ? <p className="nameplate">{profile.card.title}</p> : null}
           <p className="role">{profile.section || profile.kind} · {profile.role}</p>
           {profile.isPersona ? (
             <span className="badge persona">Persona voiced by Free Gemini · Not the official product</span>
@@ -108,6 +109,15 @@ export function ProfileSheet({ profile, demoMode, groupMemberSet, onClose, onOpe
           <p className="catch">“{profile.catchphrase}”</p>
         </div>
         <div className="facts">
+          {profile.card ? (
+            <div>
+              <h3>Guild card</h3>
+              <p>
+                <span className="house">House of {profile.card.house}</span>
+                {` · ${profile.card.creature} · ${profile.card.item} · ${profile.card.traits.join(", ")}`}
+              </p>
+            </div>
+          ) : null}
           <div><h3>Look</h3><p>{profile.look}</p></div>
           <div><h3>Voice</h3><p>{profile.voice}</p></div>
           <div><h3>Quirk</h3><p>{profile.quirk}</p></div>

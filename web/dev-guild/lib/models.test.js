@@ -224,6 +224,25 @@ test("built-in cast includes all 11 agents, 43 tool mascots, and 8 free presets 
   assert.equal(JSON.stringify(catalog).includes("Deonte"), false);
 });
 
+test("every guild agent carries a complete, unique guild card (docs/BRAND.md)", async () => {
+  resetStoreForTest();
+  const titles = new Set();
+  for (const agent of BUILTIN_AGENTS) {
+    const card = agent.card;
+    assert.ok(card, `${agent.id} has no guild card`);
+    assert.equal(card.house, "Companions", `${agent.id} house`);
+    assert.match(card.title, /^The [A-Z]/, `${agent.id} title must read "The ..."`);
+    for (const field of ["creature", "item"]) {
+      assert.ok(typeof card[field] === "string" && card[field].trim(), `${agent.id} card.${field}`);
+    }
+    assert.equal(card.traits.length, 2, `${agent.id} needs exactly two traits`);
+    assert.ok(!titles.has(card.title), `${agent.id} reuses title ${card.title}`);
+    titles.add(card.title);
+  }
+  const catalog = await buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } });
+  assert.deepEqual(catalog.find((c) => c.id === "claude").card, BUILTIN_AGENTS[0].card);
+});
+
 test("first-run deploy starts empty and supports custom group name and picked members", async () => {
   resetStoreForTest();
   const catalog = await buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } });
