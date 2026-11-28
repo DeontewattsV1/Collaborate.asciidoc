@@ -200,7 +200,7 @@ test("demo stream has a summary, a tool, and a card", () => {
   assert.ok(names.includes("tool") && names.includes("card"));
   assert.equal(JSON.stringify(events).includes("reasoningText"), false);
 });
-import { BUILTIN_AGENTS, BUILTIN_CAST, BUILTIN_TOOLS, FREE_PRESETS, statusFor } from "./cast.js";
+import { BUILTIN_AGENTS, BUILTIN_CAST, BUILTIN_TOOLS, FREE_PRESETS, GUILD_HOUSES, statusFor } from "./cast.js";
 import { planSpeakers } from "./models.js";
 import {
   checkGuildAuth,
@@ -224,23 +224,27 @@ test("built-in cast includes all 11 agents, 43 tool mascots, and 8 free presets 
   assert.equal(JSON.stringify(catalog).includes("Deonte"), false);
 });
 
-test("every guild agent carries a complete, unique guild card (docs/BRAND.md)", async () => {
+test("every guild agent and tool mascot carries a complete, unique guild card (docs/BRAND.md)", async () => {
   resetStoreForTest();
+  assert.equal(GUILD_HOUSES.length, 18);
   const titles = new Set();
-  for (const agent of BUILTIN_AGENTS) {
-    const card = agent.card;
-    assert.ok(card, `${agent.id} has no guild card`);
-    assert.equal(card.house, "Companions", `${agent.id} house`);
-    assert.match(card.title, /^The [A-Z]/, `${agent.id} title must read "The ..."`);
+  for (const member of [...BUILTIN_AGENTS, ...BUILTIN_TOOLS]) {
+    const card = member.card;
+    assert.ok(card, `${member.id} has no guild card`);
+    assert.ok(GUILD_HOUSES.includes(card.house), `${member.id} has unknown house ${card.house}`);
+    if (member.kind === "agent") assert.equal(card.house, "Companions", `${member.id} house`);
+    assert.match(card.title, /^The [A-Z]/, `${member.id} title must read "The ..."`);
     for (const field of ["creature", "item"]) {
-      assert.ok(typeof card[field] === "string" && card[field].trim(), `${agent.id} card.${field}`);
+      assert.ok(typeof card[field] === "string" && card[field].trim(), `${member.id} card.${field}`);
     }
-    assert.equal(card.traits.length, 2, `${agent.id} needs exactly two traits`);
-    assert.ok(!titles.has(card.title), `${agent.id} reuses title ${card.title}`);
+    assert.equal(card.traits.length, 2, `${member.id} needs exactly two traits`);
+    assert.ok(!titles.has(card.title), `${member.id} reuses title ${card.title}`);
     titles.add(card.title);
   }
+  assert.equal(titles.size, 54);
   const catalog = await buildCatalog({ env: { GOOGLE_GENERATIVE_AI_API_KEY: "k" } });
   assert.deepEqual(catalog.find((c) => c.id === "claude").card, BUILTIN_AGENTS[0].card);
+  assert.deepEqual(catalog.find((c) => c.id === "docker").card.house, "Skywrights");
 });
 
 test("first-run deploy starts empty and supports custom group name and picked members", async () => {
