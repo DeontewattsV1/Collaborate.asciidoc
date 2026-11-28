@@ -1,0 +1,43 @@
+# Combined image: Next.js standalone (web app) + agentterm + a tiny
+# reverse proxy, all started by a single entrypoint. Postgres and
+# ClamAV are intentionally not included; the web app's memory/tmp
+# store is persisted on the existing /data volume.
+
+FROM golang:1.26-bookworm AS gotools
+WORKDIR /src
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+COPY fly/proxy.go ./fly/proxy.go
+RUN go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/agentterm ./cmd/agentterm \
+ && go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/flyproxy ./fly/proxy.go
+
+FROM node:22-bookworm-slim AS webbuild
+WORKDIR /web
+COPY web/dev-guild/package.json web/dev-guild/package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY web/dev-guild ./
+ENV NEXT_OUTPUT=standalone
+RUN npm run build
+
+FROM node:22-bookworm-slim AS runner
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates tini \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=gotools /out/agentterm /usr/local/bin/agentterm
+COPY --from=gotools /out/flyproxy /usr/local/bin/flyproxy
+COPY .github/agent-registry.json /etc/agentterm/agent-registry.json
+COPY fly/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/agentterm /usr/local/bin/flyproxy
+COPY --from=webbuild /web/.next/standalone ./
+COPY --from=webbuild /web/.next/static ./.next/static
+COPY --from=webbuild /web/public ./public
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOSTNAME=127.0.0.1 \
+    NODE_OPTIONS=--max-old-space-size=96
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]

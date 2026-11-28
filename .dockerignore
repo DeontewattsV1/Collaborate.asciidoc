@@ -3,3 +3,17 @@
 .collab
 **/__pycache__
 *.sqlite*
+
+# Keep the remote build context small (faster, cheaper).
+web/dev-guild/node_modules
+web/dev-guild/.next
+**/node_modules
+**/.next
+native
+tests
+docs
+examples
+assets
+.claude
+.devcontainer
+.git
