@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -39,14 +40,36 @@ func TestRouting(t *testing.T) {
 	}
 }
 
-func TestSecurityHeaders(t *testing.T) {
-	h := newHandler(tagged("web"), tagged("term"))
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
-	for k := range securityHeaders {
-		if rec.Header().Get(k) == "" {
-			t.Errorf("missing %s", k)
+func TestSecurityHeadersAreAddedOnceThroughTheProxy(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/own" {
+			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		}
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+	target, _ := url.Parse(upstream.URL)
+	front := httptest.NewServer(newHandler(proxy(target), proxy(target)))
+	defer front.Close()
+
+	resp, err := http.Get(front.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	for k := range securityHeaders {
+		if got := resp.Header.Values(k); len(got) != 1 {
+			t.Errorf("%s sent %d times: %q", k, len(got), got)
+		}
+	}
+	resp, err = http.Get(front.URL + "/own")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if got := resp.Header.Values("X-Frame-Options"); len(got) != 1 || got[0] != "SAMEORIGIN" {
+		t.Errorf("upstream X-Frame-Options must win: %q", got)
 	}
 }
 
