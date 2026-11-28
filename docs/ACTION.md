@@ -1,9 +1,12 @@
 # Collaborate Check: the reusable GitHub Action
 
-> **Status: prepared, not yet published.** [`action.yml`](../action.yml), the
-> release workflow, and the examples are in this repository, but no release,
-> tag, or GitHub Marketplace listing exists yet. Until one does, pin the action
-> by a reviewed **full commit SHA** (the `FULL_COMMIT_SHA` placeholder below).
+> **Status: published.** `v1.0.0` is a published GitHub release (tag
+> `v1.0.0` = commit `0348acdda4c98d3892dd6b79467a240c4daeb0cd`) and is listed on the
+> [GitHub Marketplace](https://github.com/marketplace/actions/collaborate-check).
+> Pin the action by that **full commit SHA** with the tag as a comment, never
+> by a moving tag or branch. The published release has no binary assets yet,
+> so use the default `mode: source` (the release-built archives are still on
+> a draft release).
 > You can also copy [`collaborate-coordination.yml`](../.github/workflows/collaborate-coordination.yml),
 > which runs the same checker and works today.
 
@@ -38,8 +41,8 @@ jobs:
   coordinate:
     runs-on: ubuntu-latest
     steps:
-      # Not published yet: replace with a reviewed full commit SHA.
-      - uses: DeontewattsV1/Collaborate.asciidoc@FULL_COMMIT_SHA # vX.Y.Z
+      # v1.0.0, pinned by full commit SHA.
+      - uses: DeontewattsV1/Collaborate.asciidoc@0348acdda4c98d3892dd6b79467a240c4daeb0cd # v1.0.0
 ```
 
 `pull_request_target` lets the action comment on fork PRs. That's safe here

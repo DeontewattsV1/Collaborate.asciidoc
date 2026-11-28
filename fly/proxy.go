@@ -47,6 +47,53 @@ func proxy(target *url.URL) *httputil.ReverseProxy {
 	return p
 }
 
+// securityHeaders are added to every response that does not already set
+// them. The Next.js app adds its own Content-Security-Policy; agentterm sets
+// a stricter one for its UI.
+var securityHeaders = map[string]string{
+	"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+	"X-Content-Type-Options":    "nosniff",
+	"X-Frame-Options":           "DENY",
+	"Referrer-Policy":           "strict-origin-when-cross-origin",
+	"Permissions-Policy":        "camera=(), microphone=(), geolocation=(), payment=()",
+}
+
+// newHandler routes /terminal and the agentterm API paths to term and
+// everything else to web. Requests that reached Fly's edge over plain HTTP
+// (X-Forwarded-Proto: http) are redirected to https; Fly's own health checks
+// talk to the machine directly, and /api/health is never redirected so a
+// check can not fail on a redirect.
+func newHandler(web, term http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "http") && r.Host != "" && r.URL.Path != "/api/health" {
+			target := "https://" + r.Host + r.URL.RequestURI()
+			w.Header().Set("Location", target)
+			w.WriteHeader(http.StatusPermanentRedirect)
+			return
+		}
+		h := w.Header()
+		for k, v := range securityHeaders {
+			if h.Get(k) == "" {
+				h.Set(k, v)
+			}
+		}
+		path := r.URL.Path
+		switch {
+		case path == "/terminal" || path == "/terminal/" || strings.HasPrefix(path, "/terminal/"):
+			r.URL.Path = strings.TrimPrefix(path, "/terminal")
+			if r.URL.Path == "" {
+				r.URL.Path = "/"
+			}
+			r.URL.RawPath = ""
+			term.ServeHTTP(w, r)
+		case termAPI[path]:
+			term.ServeHTTP(w, r)
+		default:
+			web.ServeHTTP(w, r)
+		}
+	})
+}
+
 func main() {
 	listen := flag.String("listen", "0.0.0.0:8080", "proxy listen address")
 	webAddr := flag.String("web", "127.0.0.1:3000", "Next.js listen address")
@@ -63,21 +110,7 @@ func main() {
 	}
 	webP, termP := proxy(webURL), proxy(termURL)
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		switch {
-		case path == "/terminal" || path == "/terminal/" || strings.HasPrefix(path, "/terminal/"):
-			r.URL.Path = strings.TrimPrefix(path, "/terminal")
-			if r.URL.Path == "" {
-				r.URL.Path = "/"
-			}
-			termP.ServeHTTP(w, r)
-		case termAPI[path]:
-			termP.ServeHTTP(w, r)
-		default:
-			webP.ServeHTTP(w, r)
-		}
-	})
+	handler := newHandler(webP, termP)
 
 	srv := &http.Server{
 		Addr:              *listen,

@@ -2,6 +2,8 @@ module collaborate
 
 go 1.26.0
 
+toolchain go1.27.4
+
 require (
 	github.com/tetratelabs/wazero v1.8.2
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
@@ -33,7 +35,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect

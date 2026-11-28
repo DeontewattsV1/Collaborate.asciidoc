@@ -1,7 +1,8 @@
 # collaborate-asciidoc on Fly.io (iad).
 # One shared-cpu-1x machine serves the Next.js web app and the agent
-# terminal. Do not add machines, volumes, dedicated IPv4, or managed
-# Postgres: those all create a bill. Deploy with:
+# terminal. The database is an external free Supabase Postgres. Do not add
+# machines, volumes, dedicated IPv4, or Fly managed Postgres: those all
+# create a bill. Deploy with:
 #   flyctl deploy --ha=false --update-only --yes -a collaborate-asciidoc
 #
 # See fly/README.md for cost notes and rollback.
@@ -17,6 +18,10 @@ primary_region = 'iad'
   PORT = '3000'
   HOSTNAME = '127.0.0.1'
   NODE_OPTIONS = '--max-old-space-size=96'
+  # Owner/invite session revocations (logout, "log out everywhere") survive
+  # auto-stop on the volume. GUILD_STORE, DATABASE_URL (Supabase) and
+  # SECRETS_MASTER_KEY are Fly secrets, not set here.
+  GUILD_SESSION_FILE = '/data/guild/sessions.json'
 
 [[mounts]]
   source = 'data'

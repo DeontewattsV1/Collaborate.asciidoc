@@ -1,9 +1,16 @@
 # Combined image: Next.js standalone (web app) + agentterm + a tiny
-# reverse proxy, all started by a single entrypoint. Postgres and
-# ClamAV are intentionally not included; the web app's memory/tmp
-# store is persisted on the existing /data volume.
+# reverse proxy, all started by a single entrypoint. Durable rooms and
+# the secret vault use an external free Supabase Postgres (DATABASE_URL,
+# GUILD_STORE=postgres as Fly secrets); Postgres and ClamAV are not run
+# in this image. agentterm's log/key and the session-revocation file
+# live on the existing /data volume.
+#
+# Non-root: the entrypoint starts as root only to chown the root-owned
+# Fly volume, then re-executes itself as the image's unprivileged `node`
+# user (uid 1000) with setpriv, so agentterm, Next.js and the proxy never
+# run as root. (A plain USER line would leave /data unwritable.)
 
-FROM golang:1.26-bookworm AS gotools
+FROM golang:1.27.4-bookworm AS gotools
 WORKDIR /src
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 COPY go.mod go.sum ./
@@ -35,6 +42,8 @@ RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/agentterm /usr/local/b
 COPY --from=webbuild /web/.next/standalone ./
 COPY --from=webbuild /web/.next/static ./.next/static
 COPY --from=webbuild /web/public ./public
+RUN chown -R node:node /app/.next \
+ && command -v setpriv >/dev/null
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=127.0.0.1 \

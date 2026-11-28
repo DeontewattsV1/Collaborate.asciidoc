@@ -61,8 +61,10 @@ All environment variables are server-side only and never reach the browser.
 | `GUILD_BACKEND_URL` | No | Optional `https://` tunnel to a `guild serve` VM bridge for signed logging |
 | `GUILD_DEMO` | No | Set to `1` to stream scripted in-character replies when no API key is configured |
 | `GUILD_DEMO_SCRIPTED` | No | With `GUILD_DEMO=1`, set to `1` to keep the demo fully scripted (no model calls, even if a Gemini key is set) |
-| `GUILD_STORE` | No | `postgres` stores the room in Postgres (needs `DATABASE_URL`); unset keeps the in-memory + `/tmp` store. The Fly app uses the memory/tmp store (file kept on the volume). There is no hosted Postgres yet |
-| `DATABASE_URL` | With `GUILD_STORE=postgres` | Postgres connection string; apply migrations with `node scripts/migrate-guild-db.mjs` |
+| `GUILD_STORE` | No | `postgres` stores the room in Postgres (needs `DATABASE_URL`); unset keeps the in-memory + `/tmp` store. The Fly app uses `postgres` with a free Supabase database |
+| `DATABASE_URL` | With `GUILD_STORE=postgres` | Postgres connection string; apply migrations with `node scripts/migrate-guild-db.mjs`. On Fly it is the Supabase session pooler (port 5432) |
+| `GUILD_SESSION_EPOCH` | No | Change to revoke every owner and invite session and rotate the invite code (default `1`) |
+| `GUILD_SESSION_FILE` | No | Where logout revocations are stored (default `/tmp/dev-guild-sessions.json`; `/data/guild/sessions.json` on Fly) |
 | `GUILD_TEST_DATABASE_URL` | Tests only | A disposable Postgres database for the contract tests (truncated on every run; never production) |
 | `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | For uploads | Private Cloudflare R2 bucket over the S3 API (`https://` endpoint). The live bucket is `collaborate-staging` |
 | `CLAMD_HOST`, `CLAMD_PORT`, `CLAMD_TIMEOUT_MS` | For uploads | ClamAV daemon reached over TCP (`INSTREAM`); port defaults to 3310. **Not set on Fly**, so uploads stay fail-closed |
