@@ -31,18 +31,21 @@ export async function POST(request) {
     throw err;
   }
   const client = loginClientKey(request);
+  let body = {};
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Say the passphrase." }, { status: 400 });
+  }
+  // Check the throttle only after the body is read and right before the
+  // comparison, with no await in between, so concurrent requests holding
+  // their bodies open can not all slip past it.
   const retryAfter = loginRetryAfter(client);
   if (retryAfter) {
     return NextResponse.json(
       { error: "Too many sign-in attempts. Try again later." },
       { status: 429, headers: { "Retry-After": String(retryAfter) } },
     );
-  }
-  let body = {};
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Say the passphrase." }, { status: 400 });
   }
   const given = String(body.passphrase || "");
   const a = Buffer.from(given);

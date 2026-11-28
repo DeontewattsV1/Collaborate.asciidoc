@@ -30,11 +30,17 @@ def fail(message: str) -> None:
     raise ValueError(message)
 
 
-def validate(path: Path = RULESET_PATH) -> None:
+def validate(path: Path = RULESET_PATH) -> dict:
     try:
         config = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         fail(f"cannot read valid ruleset JSON at {path}: {exc}")
+    validate_config(config)
+    return config
+
+
+def validate_config(config) -> str:
+    """Validate a ruleset (checked-in JSON or the live API object); returns a summary."""
     if not isinstance(config, dict):
         fail("ruleset root must be a JSON object")
 
@@ -97,8 +103,9 @@ def validate(path: Path = RULESET_PATH) -> None:
         fail(f"ruleset must require {', '.join(sorted(missing))} from GitHub Actions ({EXPECTED_INTEGRATION})")
 
     bypass_note = "admin bypass only via pull request" if bypass else "no bypass actors"
-    print(f"Ruleset valid: active default-branch PR rule requires {approvals}+ fresh approval(s) and strict {', '.join(sorted(EXPECTED_CHECKS))} from GitHub Actions; {bypass_note}.")
-    return config
+    summary = f"Ruleset valid: active default-branch PR rule requires {approvals}+ fresh approval(s) and strict {', '.join(sorted(EXPECTED_CHECKS))} from GitHub Actions; {bypass_note}."
+    print(summary)
+    return summary
 
 
 def repository_slug() -> str:
@@ -125,9 +132,18 @@ def github_get(url: str, token: str):
 
 
 def compare_live(policy: dict, live: dict) -> None:
-    """Fail if the live ruleset is weaker than the checked-in policy."""
+    """Fail if the live ruleset is weaker than the checked-in policy.
+
+    The live object gets the same full validation as the checked-in JSON
+    (name, branch target, ~DEFAULT_BRANCH, approvals, stale-review and
+    last-push settings, strict checks), then is compared with the policy.
+    """
     if live.get("enforcement") != "active":
         fail(f"live ruleset {policy['name']} is {live.get('enforcement')!r}, not active")
+    try:
+        validate_config(live)
+    except ValueError as exc:
+        fail(f"live ruleset: {exc}")
     want_bypass = sorted(json.dumps({k: a.get(k) for k in ALLOWED_BYPASS}, sort_keys=True) for a in policy.get("bypass_actors", []))
     got_bypass = sorted(json.dumps({k: a.get(k) for k in ALLOWED_BYPASS}, sort_keys=True) for a in live.get("bypass_actors", []) or [])
     if got_bypass != want_bypass:

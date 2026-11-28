@@ -100,6 +100,13 @@ class ValidateRulesetTest(unittest.TestCase):
             'disabled': {'enforcement': 'disabled'},
             'extra bypass': {'bypass_actors': [{'actor_id': 1, 'actor_type': 'Team', 'bypass_mode': 'always'}]},
             'no rules': {'rules': []},
+            'other branch': {'conditions': {'ref_name': {'include': ['refs/heads/other'], 'exclude': []}}},
+            'zero approvals': {'rules': [
+                {**r, 'parameters': {**r['parameters'], 'required_approving_review_count': 0}} if r['type'] == 'pull_request' else r
+                for r in self.policy['rules']]},
+            'loose checks': {'rules': [
+                {**r, 'parameters': {**r['parameters'], 'strict_required_status_checks_policy': False}}
+                if r['type'] == 'required_status_checks' else r for r in self.policy['rules']]},
         }.items():
             with self.subTest(name):
                 get, _ = self.live(**overrides)
