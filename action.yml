@@ -1,0 +1,242 @@
+name: Collaborate Check
+description: Detect overlapping AI-agent pull requests (path leases) and check review independence. Never runs pull request code.
+author: GoodShyt Group Inc.
+branding:
+  icon: git-pull-request
+  color: blue
+
+# Security model
+# - The checker only reads pull request metadata through the GitHub REST API.
+#   It never checks out, builds, or executes code from the pull request.
+# - The checker binary comes from this action's own pinned source (the ref you
+#   put after `@`, ideally a full commit SHA), or from a release archive whose
+#   SHA-256 you pin (`checksum`) or whose build provenance is verified.
+# - The agent registry is read through the API from the repository's default
+#   branch (or `registry-ref`), not from the workspace.
+# - Works on `pull_request` with a read-only token: commenting and statuses are
+#   skipped with a warning when the token lacks permission.
+
+inputs:
+  github-token:
+    description: Token used for the GitHub API. Needs contents read and pull-requests read; pull-requests write to comment; statuses write for set-status.
+    default: ${{ github.token }}
+  repository:
+    description: Repository as OWNER/NAME.
+    default: ${{ github.repository }}
+  pr-number:
+    description: Pull request number. Defaults to the triggering pull request.
+    default: ""
+  registry:
+    description: Path of the agent registry in the repository.
+    default: .github/collaborate-agents.json
+  registry-ref:
+    description: Branch or ref to read the registry from through the API. Defaults to the default branch. Never point this at a pull request head.
+    default: ""
+  registry-required:
+    description: Fail when the registry file does not exist (otherwise agents are simply unattributed).
+    default: "false"
+  comment:
+    description: Create or update one sticky coordination comment on the pull request (skipped when the token cannot write).
+    default: "true"
+  summary:
+    description: Write the report to the job summary.
+    default: "true"
+  set-status:
+    description: Set the collaborate/coordination commit status on the checked head SHA (needs statuses write). Use this status as the required check for merge enforcement.
+    default: "false"
+  reconcile:
+    description: Re-check open pull requests that overlap this one, so closes, merges, and narrowed leases clear stale results.
+    default: "true"
+  fail-on-indeterminate:
+    description: Fail when the scan is incomplete (for example more open PRs than max-open). An incomplete scan is never reported as PASS.
+    default: "true"
+  max-open:
+    description: Maximum number of other open pull requests to compare (1-1000).
+    default: "100"
+  checker-source:
+    description: "`source` builds the checker from this action's pinned source (default; no release needed). `release` downloads a published, checksum-verified binary."
+    default: source
+  version:
+    description: Release tag to download when checker-source is release, e.g. v1.0.0.
+    default: ""
+  checksum:
+    description: Expected SHA-256 of the release archive for your runner (recommended pin when checker-source is release).
+    default: ""
+  verify-attestation:
+    description: Verify the release archive's build provenance with `gh attestation verify` (release mode).
+    default: "false"
+  release-repository:
+    description: Repository that publishes the checker releases.
+    default: DeontewattsV1/Collaborate.asciidoc
+
+outputs:
+  outcome:
+    description: PASS, BLOCKED, INDETERMINATE, or ERROR.
+    value: ${{ steps.check.outputs.outcome }}
+  exit-code:
+    description: 0 pass, 1 blocked, 2 error, 3 indeterminate.
+    value: ${{ steps.check.outputs.exit_code }}
+  blocking-conflicts:
+    description: Number of earlier open pull requests this one must yield to.
+    value: ${{ steps.check.outputs.blocking_conflicts }}
+  head-sha:
+    description: Head commit SHA the verdict applies to.
+    value: ${{ steps.check.outputs.head_sha }}
+  report:
+    description: Path to the JSON report (schema collaborate.check/v1).
+    value: ${{ steps.check.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs
+      id: inputs
+      shell: bash
+      env:
+        IN_REPO: ${{ inputs.repository }}
+        IN_PR: ${{ inputs.pr-number }}
+        EVENT_PR: ${{ github.event.pull_request.number }}
+        EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        IN_REGISTRY: ${{ inputs.registry }}
+        IN_REGISTRY_REF: ${{ inputs.registry-ref }}
+        IN_MAX_OPEN: ${{ inputs.max-open }}
+        IN_SOURCE: ${{ inputs.checker-source }}
+        IN_VERSION: ${{ inputs.version }}
+        IN_CHECKSUM: ${{ inputs.checksum }}
+        IN_ATTEST: ${{ inputs.verify-attestation }}
+        IN_RELEASE_REPO: ${{ inputs.release-repository }}
+        IN_COMMENT: ${{ inputs.comment }}
+        IN_SUMMARY: ${{ inputs.summary }}
+        IN_STATUS: ${{ inputs.set-status }}
+        IN_RECONCILE: ${{ inputs.reconcile }}
+        IN_FAIL_INDET: ${{ inputs.fail-on-indeterminate }}
+        IN_REG_REQUIRED: ${{ inputs.registry-required }}
+      run: |
+        set -euo pipefail
+        die() { echo "::error title=Collaborate Check::$1"; exit 2; }
+        bool() { case "$2" in true|false) ;; *) die "input $1 must be true or false";; esac; }
+        bool comment "$IN_COMMENT"; bool summary "$IN_SUMMARY"; bool set-status "$IN_STATUS"
+        bool reconcile "$IN_RECONCILE"; bool fail-on-indeterminate "$IN_FAIL_INDET"
+        bool verify-attestation "$IN_ATTEST"; bool registry-required "$IN_REG_REQUIRED"
+        repo_re='^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$'
+        [[ "$IN_REPO" =~ $repo_re ]] || die "repository must be OWNER/NAME"
+        [[ "$IN_RELEASE_REPO" =~ $repo_re ]] || die "release-repository must be OWNER/NAME"
+        pr="${IN_PR:-$EVENT_PR}"
+        [[ "$pr" =~ ^[1-9][0-9]{0,9}$ ]] || die "no pull request number: set pr-number or run on a pull_request, pull_request_target, or pull_request_review event"
+        [[ "$IN_MAX_OPEN" =~ ^[1-9][0-9]{0,3}$ ]] && (( IN_MAX_OPEN <= 1000 )) || die "max-open must be 1-1000"
+        ref="${IN_REGISTRY_REF:-$DEFAULT_BRANCH}"
+        [ -n "$ref" ] || die "registry-ref is required when the event has no repository default branch"
+        [[ "$ref" =~ ^[A-Za-z0-9._/-]{1,255}$ && "$ref" != *..* ]] || die "registry-ref is not a valid ref"
+        [[ "$IN_REGISTRY" =~ ^[A-Za-z0-9._/-]{1,255}$ && "$IN_REGISTRY" != *..* && "$IN_REGISTRY" != /* ]] || die "registry must be a repository-relative path"
+        case "$IN_SOURCE" in
+          source) ;;
+          release)
+            [[ "$IN_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "version must be a release tag like v1.0.0 when checker-source is release"
+            if [ -n "$IN_CHECKSUM" ]; then
+              [[ "$IN_CHECKSUM" =~ ^[0-9a-f]{64}$ ]] || die "checksum must be a lowercase SHA-256 hex digest"
+            elif [ "$IN_ATTEST" != true ]; then
+              die "release mode needs a pinned checksum or verify-attestation: true"
+            fi ;;
+          *) die "checker-source must be source or release" ;;
+        esac
+        head=""
+        if [ -z "$IN_PR" ] && [[ "$EVENT_HEAD" =~ ^[0-9a-f]{40}$ ]]; then head="$EVENT_HEAD"; fi
+        {
+          echo "pr=$pr"
+          echo "head=$head"
+          echo "registry_ref=$ref"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Set up Go (build checker from the action's pinned source)
+      if: inputs.checker-source == 'source'
+      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+        cache: false
+
+    - name: Build checker from source
+      if: inputs.checker-source == 'source'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        CGO_ENABLED: "0"
+        GOFLAGS: -mod=readonly
+      run: |
+        set -euo pipefail
+        ext=""; [ "${RUNNER_OS}" = Windows ] && ext=".exe"
+        go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/collaborate-check$ext" ./cmd/collaborate-check
+        echo "COLLABORATE_CHECK_BIN=$RUNNER_TEMP/collaborate-check$ext" >> "$GITHUB_ENV"
+
+    - name: Download and verify release checker
+      if: inputs.checker-source == 'release'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        CHECKSUM: ${{ inputs.checksum }}
+        ATTEST: ${{ inputs.verify-attestation }}
+        RELEASE_REPO: ${{ inputs.release-repository }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        case "${RUNNER_OS}/${RUNNER_ARCH}" in
+          Linux/X64) os=linux arch=amd64 ;; Linux/ARM64) os=linux arch=arm64 ;;
+          macOS/X64) os=darwin arch=amd64 ;; macOS/ARM64) os=darwin arch=arm64 ;;
+          Windows/X64) os=windows arch=amd64 ;;
+          *) echo "::error::unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}"; exit 2 ;;
+        esac
+        ext=tar.gz; bin=collaborate-check; [ "$os" = windows ] && { ext=zip; bin=collaborate-check.exe; }
+        name="collaborate-check_${VERSION}_${os}_${arch}.${ext}"
+        sums="collaborate-check_${VERSION}_checksums.txt"
+        dir="$RUNNER_TEMP/collaborate-check-dl"; rm -rf "$dir"; mkdir -p "$dir"; cd "$dir"
+        base="https://github.com/${RELEASE_REPO}/releases/download/${VERSION}"
+        curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$name" "$base/$name"
+        curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$sums" "$base/$sums"
+        sha() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+        actual="$(sha "$name")"
+        listed="$(awk -v f="$name" '$2 == f || $2 == "*"f { print $1 }' "$sums")"
+        [ -n "$listed" ] && [ "$listed" = "$actual" ] || { echo "::error::$name does not match $sums"; exit 2; }
+        if [ -n "$CHECKSUM" ] && [ "$CHECKSUM" != "$actual" ]; then
+          echo "::error::$name SHA-256 $actual does not match the pinned checksum"; exit 2
+        fi
+        if [ "$ATTEST" = true ]; then
+          gh attestation verify "$name" --repo "$RELEASE_REPO" \
+            --signer-workflow "${RELEASE_REPO}/.github/workflows/release.yml"
+        fi
+        if [ "$ext" = zip ]; then unzip -q "$name" "$bin"; else tar -xzf "$name" "$bin"; fi
+        chmod +x "$bin"
+        echo "COLLABORATE_CHECK_BIN=$dir/$bin" >> "$GITHUB_ENV"
+
+    - name: Check leases and review independence
+      id: check
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        IN_REPO: ${{ inputs.repository }}
+        PR: ${{ steps.inputs.outputs.pr }}
+        HEAD: ${{ steps.inputs.outputs.head }}
+        REGISTRY: ${{ inputs.registry }}
+        REGISTRY_REF: ${{ steps.inputs.outputs.registry_ref }}
+        REG_REQUIRED: ${{ inputs.registry-required }}
+        COMMENT: ${{ inputs.comment }}
+        SUMMARY: ${{ inputs.summary }}
+        STATUS: ${{ inputs.set-status }}
+        RECONCILE: ${{ inputs.reconcile }}
+        FAIL_INDET: ${{ inputs.fail-on-indeterminate }}
+        MAX_OPEN: ${{ inputs.max-open }}
+      run: |
+        set -uo pipefail
+        report="$RUNNER_TEMP/collaborate-check-report.json"
+        args=(--repo "$IN_REPO" --pr "$PR" --registry "$REGISTRY" --registry-ref "$REGISTRY_REF"
+              --max-open "$MAX_OPEN" --json --output "$GITHUB_OUTPUT")
+        [ -n "$HEAD" ] && args+=(--head-sha "$HEAD")
+        [ "$REG_REQUIRED" = true ] || args+=(--registry-optional)
+        [ "$COMMENT" = true ] && args+=(--comment)
+        [ "$SUMMARY" = true ] && args+=(--summary "$GITHUB_STEP_SUMMARY")
+        [ "$STATUS" = true ] && args+=(--set-status)
+        [ "$RECONCILE" = true ] && args+=(--reconcile)
+        [ "$FAIL_INDET" = true ] || args+=(--allow-indeterminate)
+        "$COLLABORATE_CHECK_BIN" "${args[@]}" > "$report"
+        code=$?
+        echo "report=$report" >> "$GITHUB_OUTPUT"
+        exit "$code"

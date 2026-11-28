@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "humans": ["your-github-login"],
+  "enforce_independent_review": false,
+  "agents": [
+    {
+      "id": "claude",
+      "platform": "Anthropic Claude",
+      "logins": ["claude[bot]"],
+      "branch_prefixes": ["claude/"],
+      "trailer_emails": ["noreply@anthropic.com"]
+    },
+    {
+      "id": "codex",
+      "platform": "OpenAI Codex",
+      "logins": ["chatgpt-codex-connector[bot]"],
+      "branch_prefixes": ["codex/"]
+    },
+    {
+      "id": "copilot",
+      "platform": "GitHub Copilot",
+      "logins": ["Copilot", "copilot-swe-agent[bot]"],
+      "branch_prefixes": ["copilot/"]
+    },
+    {
+      "id": "dependabot",
+      "platform": "Dependabot",
+      "kind": "automation",
+      "logins": ["dependabot[bot]"],
+      "branch_prefixes": ["dependabot/"]
+    }
+  ]
+}

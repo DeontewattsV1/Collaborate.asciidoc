@@ -1,0 +1,97 @@
+name: release
+
+# Builds the standalone collaborate-check binaries for the reusable GitHub
+# Action, with SHA-256 checksums and build-provenance attestations, and opens
+# a DRAFT release for a maintainer to review and publish by hand.
+#
+# Nothing here runs until a maintainer pushes a vX.Y.Z tag. A manual run
+# (workflow_dispatch) only builds and checksums; it never creates a release.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      CGO_ENABLED: "0"
+      GOFLAGS: -mod=readonly
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test the checker
+        run: go test -count=1 ./internal/ghcoord/ ./cmd/collaborate-check/
+      - name: Build binaries and checksums
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" = tag ]; then version="$REF_NAME"; else version="v0.0.0-dev"; fi
+          [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-dev)?$ ]] || { echo "::error::bad version $version"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          mkdir -p release-assets
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${target%/*}"; arch="${target#*/}"
+            stage="$(mktemp -d)"
+            bin=collaborate-check; [ "$os" = windows ] && bin=collaborate-check.exe
+            GOOS="$os" GOARCH="$arch" go build -trimpath -buildvcs=false \
+              -ldflags "-s -w -buildid= -X main.version=$version" \
+              -o "$stage/$bin" ./cmd/collaborate-check
+            cp LICENSE "$stage/LICENSE"
+            name="collaborate-check_${version}_${os}_${arch}"
+            # Normalize timestamps and ownership so archives are reproducible.
+            touch -d "@0" "$stage/$bin" "$stage/LICENSE"
+            if [ "$os" = windows ]; then
+              (cd "$stage" && zip -X -q "$GITHUB_WORKSPACE/release-assets/$name.zip" "$bin" LICENSE)
+            else
+              tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 \
+                -C "$stage" -czf "release-assets/$name.tar.gz" "$bin" LICENSE
+            fi
+          done
+          (cd release-assets && sha256sum collaborate-check_* > "collaborate-check_${version}_checksums.txt")
+          {
+            echo "### collaborate-check $version"
+            echo '```'
+            cat "release-assets/collaborate-check_${version}_checksums.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Attest build provenance
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/collaborate-check_*
+      - name: Create draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release create "$VERSION" release-assets/* \
+            --repo "$REPO" --draft --verify-tag \
+            --title "Collaborate Check $VERSION" \
+            --notes "Draft created by the release workflow. Review the checksums in the run summary, then publish by hand. See docs/ACTION.md."

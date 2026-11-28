@@ -18,6 +18,8 @@ the coordination protocol. No platform-specific integration is needed.
 | Shared context | A sticky `Collaborate coordination` comment on each PR listing every other open PR, its agent, and its paths, so any agent reading the PR sees who is working on what |
 | Independent review | An `APPROVED` review on the current head commit from a login that is neither the author nor attributed to the same agent |
 | Gates | Your existing required CI (`go-verify`) |
+| Verdict | `PASS`, `BLOCKED`, `INDETERMINATE` (incomplete scan, stale head, PR changed mid-scan; never a pass), or `ERROR`; exit codes 0/1/3/2. See [`ACTION.md`](ACTION.md#outcomes-and-exit-codes) |
+| Lease release | A closed or merged PR holds no lease; its run re-checks (`--reconcile`) every open PR that overlapped it and refreshes their comments |
 
 ## Setup
 
@@ -34,7 +36,10 @@ the coordination protocol. No platform-specific integration is needed.
    - `humans`: human GitHub logins, so their PRs are labelled rather than
      reported as unattributed.
 2. Merge the workflow `.github/workflows/collaborate-coordination.yml`. It runs
-   from the default branch on every PR event and review.
+   from the default branch on every PR event (including `closed`, for
+   reconciliation) and review. Other repositories can use the reusable action
+   instead, prepared in [`action.yml`](../action.yml) and documented in
+   [`ACTION.md`](ACTION.md) (not yet published).
 3. Optional: set `"enforce_independent_review": true` to fail the check until an
    independent approval exists on the current head, and add the `coordinate`
    check to the `main-require-independent-ci` ruleset to make it required.

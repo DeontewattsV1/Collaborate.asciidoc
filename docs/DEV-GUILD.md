@@ -21,7 +21,7 @@ The same claims and review rules run in the broker and the GitHub check, so the 
 
 ## Public demo mode
 
-The current Fly app is a signed-in deployment (owner token or invite codes), not this no-login demo mode. `GUILD_DEMO=1` remains available for a future public demo or a local preview.
+The current Fly app is a signed-in deployment (owner token or invite codes), not this no-login demo mode. `GUILD_DEMO=1` remains available for a future public demo or a local preview. Demo mode is isolated from durable state: durable rooms and the secret vault answer 503, and the chat never reads or writes Postgres, even if `DATABASE_URL` is set. The public no-login experience is the static [playground](../site/playground.html) on GitHub Pages, which needs no server at all.
 
 When a public deployment runs with `GUILD_DEMO=1` and a free `GOOGLE_GENERATIVE_AI_API_KEY`:
 
@@ -60,6 +60,7 @@ All environment variables are server-side only and never reach the browser.
 | `OLLAMA_HOST` | No | Activates the Ollama endpoint preset (for example an `https://` tunnel to your host) |
 | `GUILD_BACKEND_URL` | No | Optional `https://` tunnel to a `guild serve` VM bridge for signed logging |
 | `GUILD_DEMO` | No | Set to `1` to stream scripted in-character replies when no API key is configured |
+| `GUILD_DEMO_SCRIPTED` | No | With `GUILD_DEMO=1`, set to `1` to keep the demo fully scripted (no model calls, even if a Gemini key is set) |
 | `GUILD_STORE` | No | `postgres` stores the room in Postgres (needs `DATABASE_URL`); unset keeps the in-memory + `/tmp` store. The Fly app uses the memory/tmp store (file kept on the volume). There is no hosted Postgres yet |
 | `DATABASE_URL` | With `GUILD_STORE=postgres` | Postgres connection string; apply migrations with `node scripts/migrate-guild-db.mjs` |
 | `GUILD_TEST_DATABASE_URL` | Tests only | A disposable Postgres database for the contract tests (truncated on every run; never production) |

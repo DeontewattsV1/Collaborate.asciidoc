@@ -78,6 +78,10 @@ const ROOM_ID = "guild";
 
 export function usesPostgres(env) {
   const source = env || process.env;
+  // The anonymous demo never reads or writes the durable store, so a host
+  // that sets both GUILD_DEMO=1 and DATABASE_URL cannot leak real history.
+  const demo = source.GUILD_DEMO !== undefined ? source.GUILD_DEMO : process.env.GUILD_DEMO;
+  if (String(demo || "").trim() === "1") return false;
   const kind = source.GUILD_STORE !== undefined ? source.GUILD_STORE : process.env.GUILD_STORE;
   return String(kind || "").trim().toLowerCase() === "postgres";
 }

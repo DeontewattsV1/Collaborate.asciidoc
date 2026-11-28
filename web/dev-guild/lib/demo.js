@@ -25,9 +25,23 @@ export function isDemoMode(env) {
   return String(source.GUILD_DEMO || "").trim() === "1";
 }
 
+// GUILD_DEMO_SCRIPTED=1 keeps a public demo fully scripted: no model calls
+// and no inference cost, even when a Gemini key is present on the host.
+export function isScriptedDemo(env) {
+  const source = env || process.env;
+  return isDemoMode(source) && String(source.GUILD_DEMO_SCRIPTED || "").trim() === "1";
+}
+
 export function isLiveDemo(env) {
   const source = env || process.env;
-  return isDemoMode(source) && Boolean(String(source.GOOGLE_GENERATIVE_AI_API_KEY || "").trim());
+  return isDemoMode(source) && !isScriptedDemo(source) && Boolean(String(source.GOOGLE_GENERATIVE_AI_API_KEY || "").trim());
+}
+
+// The anonymous demo is isolated from durable state: durable rooms and the
+// secret vault (both behind roomDb) refuse to open while GUILD_DEMO=1, even
+// if DATABASE_URL is set, so an anonymous visitor can never reach them.
+export function durableStoreBlockedReason(env) {
+  return isDemoMode(env) ? "durable rooms and the secret vault are disabled in public demo mode" : "";
 }
 
 export function clientIpFromRequest(request) {
@@ -203,6 +217,7 @@ export function checkDemoAutoLimit(
 
 export function demoAttempts(env) {
   const source = env || process.env;
+  if (isScriptedDemo(source)) return [];
   if (!String(source.GOOGLE_GENERATIVE_AI_API_KEY || "").trim()) return [];
   return [{ provider: "google", modelId: FLASH_LITE }];
 }

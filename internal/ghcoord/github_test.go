@@ -2,6 +2,7 @@ package ghcoord
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -23,10 +24,20 @@ type fakeGitHub struct {
 	nextID   int64
 	readOnly bool
 	srv      *httptest.Server
+	// statuses records POST /statuses/{sha} bodies keyed by sha.
+	statuses map[string]map[string]string
+	// contents serves GET /contents/{path}?ref=REF, keyed by "REF:path".
+	contents map[string]string
+	// flipHead moves PR n's head to this SHA after its first GET, simulating
+	// a push during the scan.
+	flipHead map[int]string
+	pullGets map[int]int
+	noStatus bool
 }
 
 func newFakeGitHub(t *testing.T) *fakeGitHub {
-	f := &fakeGitHub{t: t, pulls: map[int]map[string]any{}, files: map[int][]string{}, commits: map[int][]string{}, reviews: map[int][]map[string]any{}, nextID: 100}
+	f := &fakeGitHub{t: t, pulls: map[int]map[string]any{}, files: map[int][]string{}, commits: map[int][]string{}, reviews: map[int][]map[string]any{}, nextID: 100,
+		statuses: map[string]map[string]string{}, contents: map[string]string{}, flipHead: map[int]string{}, pullGets: map[int]int{}}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -110,9 +121,33 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, pr)
+		f.pullGets[n]++
+		if sha := f.flipHead[n]; sha != "" && f.pullGets[n] == 1 {
+			pr["head"] = map[string]string{"ref": pr["head"].(map[string]string)["ref"], "sha": sha}
+		}
+	case r.Method == http.MethodPost && strings.HasPrefix(p, "/statuses/"):
+		if f.noStatus {
+			http.Error(w, `{"message":"Resource not accessible by integration"}`, http.StatusForbidden)
+			return
+		}
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.statuses[strings.TrimPrefix(p, "/statuses/")] = body
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, body)
+	case r.Method == http.MethodGet && strings.HasPrefix(p, "/contents/"):
+		content, ok := f.contents[r.URL.Query().Get("ref")+":"+strings.TrimPrefix(p, "/contents/")]
+		if !ok {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]string{"type": "file", "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte(content))})
 	case r.Method == http.MethodGet && scan(p, "/issues/%d/comments", &n):
 		var items []any
 		for _, c := range f.comments {
+			if issue, ok := c["issue"].(int); ok && issue != n {
+				continue
+			}
 			items = append(items, c)
 		}
 		f.paginate(w, r, items)
@@ -124,7 +159,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.nextID++
-		f.comments = append(f.comments, map[string]any{"id": f.nextID, "body": body["body"], "user": map[string]string{"login": "github-actions[bot]"}})
+		f.comments = append(f.comments, map[string]any{"id": f.nextID, "body": body["body"], "issue": n, "user": map[string]string{"login": "github-actions[bot]"}})
 		w.WriteHeader(http.StatusCreated)
 		writeJSON(w, map[string]any{"id": f.nextID})
 	case r.Method == http.MethodPatch && scan(p, "/issues/comments/%d", &n):

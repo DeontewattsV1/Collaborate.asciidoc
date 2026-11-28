@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import pg from "pg";
+import { durableStoreBlockedReason } from "../demo.js";
 import { RoomApiError, unavailable } from "./errors.js";
 
 // The identity and room API requires the durable store. With GUILD_STORE
 // unset (memory demo) every room route answers 503 rather than pretending.
 export function roomDb(env = process.env) {
+  const blocked = durableStoreBlockedReason(env);
+  if (blocked) throw unavailable(blocked);
   if (String(env.GUILD_STORE || "").trim().toLowerCase() !== "postgres") {
     throw unavailable("durable rooms need GUILD_STORE=postgres");
   }
