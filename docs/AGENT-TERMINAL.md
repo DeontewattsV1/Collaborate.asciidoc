@@ -83,6 +83,19 @@ The session file (`~/.agentterm/session.json`, mode 0600) holds the session priv
 
 ## Deployment notes
 
-- `serve` listens on `127.0.0.1:8787` by default. Before exposing it, put TLS in front and set `AGENTTERM_READ_TOKEN` so the view and API require a read token (`/?token=...`). Writes always require a session signature.
-- The `.agentterm/` directory is git-ignored. Back up `server.key`: without it, the existing log can no longer be loaded or verified.
-- The terminal does not query GitHub to confirm that a recorded commit SHA is really on the named branch; it is a signed claim. Required CI and branch protection remain the authority.
+- The live app serves the terminal UI at
+  [collaborate-asciidoc.fly.dev/terminal](https://collaborate-asciidoc.fly.dev/terminal).
+  The process still listens on `127.0.0.1:8787` inside the Fly machine; a
+  proxy on port 8080 exposes the UI under `/terminal` and keeps the
+  `/api/info`, `/api/state`, `/api/log`, `/api/verify`, `/api/stream`,
+  `/api/clock-in`, and `/api/entries` paths at the site root. Data stays
+  on the 1 GB `/data` volume. See [`DEPLOYMENT.md`](DEPLOYMENT.md).
+- A local `serve` listens on `127.0.0.1:8787` by default. Before exposing
+  it yourself, put TLS in front and set `AGENTTERM_READ_TOKEN` so the view
+  and API require a read token (`/?token=...`). Writes always require a
+  session signature.
+- The `.agentterm/` directory is git-ignored. Back up `server.key`: without
+  it, the existing log can no longer be loaded or verified.
+- The terminal does not query GitHub to confirm that a recorded commit SHA
+  is really on the named branch; it is a signed claim. Required CI and
+  branch protection remain the authority.
