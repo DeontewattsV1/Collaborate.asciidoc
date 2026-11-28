@@ -1,6 +1,6 @@
 name: Collaborate Check
 description: Detect overlapping AI-agent pull requests (path leases) and check review independence. Never runs pull request code.
-author: GoodShyt Group Inc.
+author: DeontewattsV1
 branding:
   icon: git-pull-request
   color: blue
