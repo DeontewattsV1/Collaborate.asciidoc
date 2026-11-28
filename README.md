@@ -156,6 +156,7 @@ The verified properties and the remaining gaps are documented in [`SECURITY.md`]
 |---|---|
 | [`docs/CLI.md`](docs/CLI.md) | Command reference and local broker walkthrough |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Current Fly hosting, costs, deploy/rollback, and roadmap |
+| [`docs/SECRETS.md`](docs/SECRETS.md) | Secure secret drop: chat redaction, encrypted vault, agent grants, sync |
 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Broker remote TLS, backup, and trust boundaries |
 | [`docs/BROKER-PROTOCOL.md`](docs/BROKER-PROTOCOL.md) | Ledger event shape, types, and integrity |
 | [`docs/PROTOCOL.adoc`](docs/PROTOCOL.adoc) | `collab` pilot protocol |

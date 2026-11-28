@@ -124,6 +124,7 @@ Set on the Fly app; never commit values. The browser never receives them.
 | `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Private R2 bucket (`collaborate-staging`) |
 | `DATABASE_URL` | Only if `GUILD_STORE=postgres`; **not set** today |
 | `CLAMD_HOST` / `CLAMSCAN_PATH` | Scanner; **not set** today, so uploads stay disabled |
+| `SECRETS_MASTER_KEY` | Secret vault master key; **not set** today, so the vault is off (chat redaction still runs). See [`SECRETS.md`](SECRETS.md) |
 
 Full variable names for local development are in
 [`web/dev-guild/.env.example`](../web/dev-guild/.env.example).

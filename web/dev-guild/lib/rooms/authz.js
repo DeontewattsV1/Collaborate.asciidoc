@@ -1,5 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { denied, rejected, unauthorized } from "./errors.js";
+import { redactSecrets } from "../secrets/detector.js";
+import { loadVaultKeys } from "../secrets/crypto.js";
+import { captureFindings } from "../secrets/vault.js";
 
 // Room authorization on top of migration 002.
 //
@@ -177,6 +180,9 @@ function messageFrom(row) {
     text: body.text || "",
     files: Array.isArray(body.files) ? body.files : [],
     time: body.time || (row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at || "")),
+    ...(body.secret ? { secret: body.secret } : {}),
+    ...(Array.isArray(body.secrets) && body.secrets.length ? { secrets: body.secrets } : {}),
+    ...(body.redactedSecrets ? { redactedSecrets: body.redactedSecrets } : {}),
   };
 }
 
@@ -195,10 +201,25 @@ function validateSend({ text, files = [], idempotencyKey } = {}) {
 
 // sendMessage writes to the room's "guild" thread so durable-room messages
 // also appear in the existing web UI transcript for that room.
-export async function sendMessage(db, token, roomId, input = {}) {
-  const { text, files, idempotencyKey } = validateSend(input);
+//
+// Secrets are intercepted before anything is stored: the text is redacted,
+// and when the sender is an owner and the vault is configured each detected
+// value is sealed into the vault and shown as a redacted card instead.
+export async function sendMessage(db, token, roomId, input = {}, { env = process.env } = {}) {
+  const valid = validateSend(input);
+  const scrubbed = redactSecrets(valid.text, { keepValues: true });
+  const { files, idempotencyKey } = valid;
+  const text = scrubbed.text;
+  let keys = null;
+  if (scrubbed.redacted) {
+    try {
+      keys = loadVaultKeys(env);
+    } catch {
+      keys = null;
+    }
+  }
   return withTx(db, async (client) => {
-    const { identity } = await requireRole(client, token, roomId, ROLES.write);
+    const { identity, role } = await requireRole(client, token, roomId, ROLES.write);
     if (idempotencyKey) {
       const claim = await client.query(
         `insert into guild_send_idempotency (room_id, identity_id, idem_key)
@@ -225,7 +246,13 @@ export async function sendMessage(db, token, roomId, input = {}) {
       if (!f.rowCount) throw rejected("attachment unavailable");
     }
     const messageId = `m_${randomUUID()}`;
+    const secrets = scrubbed.redacted
+      ? await captureFindings(client, keys, { roomId, actor: { id: identity.id, role }, findings: scrubbed.findings })
+      : [];
+    scrubbed.findings.forEach((f) => { f.value = ""; });
     const body = { name: identity.displayName || identity.id, text, files, time: new Date().toISOString(), mine: false, status: "" };
+    if (scrubbed.redacted) body.redactedSecrets = scrubbed.findings.length;
+    if (secrets.length) body.secrets = secrets;
     const { rows } = await client.query(
       `insert into guild_messages (room_id, id, thread_id, from_id, kind, body)
        values ($1, $2, 'guild', $3, 'person', $4::jsonb)

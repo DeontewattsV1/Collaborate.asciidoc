@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Secure secret drop.** Keys pasted into the chat are intercepted in the
+  browser and on the server and never stored, prompted or logged raw. Owners
+  save them through a glass **Add secret** sheet (name, source link, provider,
+  scopes, environments, allowed agents, expiry) into a Postgres vault with
+  AES-256-GCM envelope encryption under `SECRETS_MASTER_KEY` (fail closed).
+  Agents get access only through explicit grants and single-use scoped
+  handles; optional provider verification and approval-gated sync to Fly,
+  Cloudflare, Netlify, a local `.env` (GitHub is plan-only); hash-chained,
+  append-only audit log. Off on the live app until Postgres and the master key
+  are configured. See [`docs/SECRETS.md`](docs/SECRETS.md).
+
 - **Hosted app.** The live product is the Fly.io app
   [`collaborate-asciidoc.fly.dev`](https://collaborate-asciidoc.fly.dev):
   one `shared-cpu-1x` 256 MB machine in `iad` running Dev Guild and the
