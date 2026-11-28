@@ -1,4 +1,5 @@
-name: release
+- name: Collaborate Check
+  uses: DeontewattsV1/Collaborate.asciidoc@v1.0.0
 
 # Builds the standalone collaborate-check binaries for the reusable GitHub
 # Action, with SHA-256 checksums and build-provenance attestations, and opens
