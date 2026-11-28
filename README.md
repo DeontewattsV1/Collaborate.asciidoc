@@ -43,10 +43,10 @@ The playground is static and synthetic. It makes no network calls (enforced by i
 Collaborate Check is the open-source coordination checker in [`internal/ghcoord`](internal/ghcoord). It only reads pull request metadata through the GitHub API and never checks out or runs pull request code.
 
 - **Use it today:** copy [`.github/workflows/collaborate-coordination.yml`](.github/workflows/collaborate-coordination.yml) and [`.github/collaborate-agents.json`](examples/github-action/collaborate-agents.json) into your repository. This repository runs it as its `coordinate` check.
-- **Reusable action (prepared, not yet published):** [`action.yml`](action.yml) packages the same checker as a composite action. No release, tag, or Marketplace listing exists yet, so pin it by a reviewed full commit SHA:
+- **Reusable action (published, v1.0.0):** [`action.yml`](action.yml) packages the same checker as a composite action, listed on the [GitHub Marketplace](https://github.com/marketplace/actions/collaborate-check). Pin it by the release's full commit SHA:
 
   ```yaml
-  - uses: DeontewattsV1/Collaborate.asciidoc@FULL_COMMIT_SHA
+  - uses: DeontewattsV1/Collaborate.asciidoc@0348acdda4c98d3892dd6b79467a240c4daeb0cd # v1.0.0
   ```
 
   The full example is in [`examples/github-action/coordinate.yml`](examples/github-action/coordinate.yml), and inputs, outputs, permissions, and the security model are in [`docs/ACTION.md`](docs/ACTION.md).
@@ -182,7 +182,7 @@ agentterm claim internal/foo && agentterm run -- go test ./internal/foo && agent
 | `cmd/guild`, `internal/guild`, `web/dev-guild` | Dev Guild group chat, characters, personalities, and the owner API |
 | `cmd/agent-registry-check`, `internal/agentregistry`, `.github/agent-registry.json` | Which GitHub identity and branch prefix belongs to which agent; backs the `agent-registry` check |
 | `internal/ghcoord`, `.github/workflows/collaborate-coordination.yml` | PR path leases and `Collaborate-Claim:` lines; backs the `coordinate` check |
-| `cmd/collaborate-check`, `action.yml`, `.github/workflows/release.yml`, `examples/github-action/` | The standalone checker and the reusable Collaborate Check action (prepared, not yet published) |
+| `cmd/collaborate-check`, `action.yml`, `.github/workflows/release.yml`, `examples/github-action/` | The standalone checker and the reusable Collaborate Check action (published as v1.0.0) |
 | `site/playground.html`, `site/playground.js` | The static, synthetic public playground on GitHub Pages |
 | `.devcontainer`, `scripts/sandbox`, `docs/IPHONE-SANDBOX.md` | Optional iPhone-driven sandbox (Codespaces, or an unused Oracle Always Free VM) |
 | `scripts/check.sh` | The one verification command. CI's `go-verify` runs exactly this |

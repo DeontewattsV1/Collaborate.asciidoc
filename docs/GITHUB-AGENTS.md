@@ -39,7 +39,7 @@ the coordination protocol. No platform-specific integration is needed.
    from the default branch on every PR event (including `closed`, for
    reconciliation) and review. Other repositories can use the reusable action
    instead, prepared in [`action.yml`](../action.yml) and documented in
-   [`ACTION.md`](ACTION.md) (not yet published).
+   [`ACTION.md`](ACTION.md) (published as v1.0.0 on the GitHub Marketplace).
 3. Optional: set `"enforce_independent_review": true` to fail the check until an
    independent approval exists on the current head, and add the `coordinate`
    check to the `main-require-independent-ci` ruleset to make it required.

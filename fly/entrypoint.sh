@@ -5,6 +5,14 @@
 # auto-stop without mixing with agentterm's files.
 set -euo pipefail
 
+# Start as root only long enough to make the Fly volume writable for the
+# unprivileged `node` user, then re-exec this script as that user.
+if [ "$(id -u)" = "0" ]; then
+  mkdir -p /data/guild
+  chown -R node:node /data
+  exec setpriv --reuid=node --regid=node --init-groups "$0" "$@"
+fi
+
 mkdir -p /data/guild
 # The route store writes /tmp/dev-guild-state.json. Point that path
 # at the volume so idle stops do not wipe chat state.

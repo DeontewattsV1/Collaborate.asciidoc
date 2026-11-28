@@ -55,6 +55,10 @@ class ValidateRulesetTest(unittest.TestCase):
             'stale approvals kept': lambda c: pr(c).update(dismiss_stale_reviews_on_push=False),
             'last push unapproved': lambda c: pr(c).pop('require_last_push_approval'),
             'bypass actor': lambda c: c.update(bypass_actors=[{'actor_id': 1}]),
+            'admin always bypass': lambda c: c.update(bypass_actors=[
+                {'actor_id': 5, 'actor_type': 'RepositoryRole', 'bypass_mode': 'always'}]),
+            'integration bypass': lambda c: c.update(bypass_actors=[
+                {'actor_id': 5, 'actor_type': 'Integration', 'bypass_mode': 'pull_request'}]),
             'loose status policy': lambda c: status(c).update(strict_required_status_checks_policy=False),
         }
         # Dropping any one required check must fail, so a check added to
@@ -68,6 +72,39 @@ class ValidateRulesetTest(unittest.TestCase):
                 mutate(config)
                 with self.assertRaises(ValueError):
                     self.run_validate(config)
+
+
+    def test_live_check_is_skipped_without_a_token(self):
+        msg = self.v.validate_live(self.policy, env={}, get=lambda *a: self.fail('no API call without a token'))
+        self.assertIn('skipped', msg)
+
+    def live(self, **overrides):
+        live = copy.deepcopy(self.policy)
+        live.update(id=1, **overrides)
+        calls = []
+
+        def get(url, token):
+            calls.append(url)
+            return [{'id': 1, 'name': self.policy['name']}] if url.endswith('/rulesets') else live
+        return get, calls
+
+    def test_live_check_passes_for_a_matching_active_ruleset(self):
+        get, calls = self.live()
+        env = {'GITHUB_TOKEN': 't', 'GITHUB_REPOSITORY': 'o/r'}
+        self.assertIn('matches', self.v.validate_live(self.policy, env=env, get=get))
+        self.assertEqual(calls[0], 'https://api.github.com/repos/o/r/rulesets')
+
+    def test_live_check_fails_for_a_disabled_or_weaker_ruleset(self):
+        env = {'GITHUB_TOKEN': 't', 'GITHUB_REPOSITORY': 'o/r'}
+        for name, overrides in {
+            'disabled': {'enforcement': 'disabled'},
+            'extra bypass': {'bypass_actors': [{'actor_id': 1, 'actor_type': 'Team', 'bypass_mode': 'always'}]},
+            'no rules': {'rules': []},
+        }.items():
+            with self.subTest(name):
+                get, _ = self.live(**overrides)
+                with self.assertRaises(ValueError):
+                    self.v.validate_live(self.policy, env=env, get=get)
 
 
 if __name__ == '__main__':

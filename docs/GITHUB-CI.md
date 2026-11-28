@@ -11,7 +11,9 @@ The checked-in [`main-required-ci.json`](../.github/rulesets/main-required-ci.js
 - require the `go-verify` and `agent-registry` checks from the GitHub Actions integration;
 - require a pull request before merging, with a strict up-to-date branch;
 - require at least one independent approval, dismiss stale approvals, and resolve review threads;
-- allow no bypass actors.
+- allow exactly one bypass: repository admins, and only when merging a pull request (`bypass_mode: pull_request`), so the sole maintainer can merge their own PRs while direct pushes to `main` stay blocked.
+
+`.github/scripts/validate_ruleset.py` (run by `scripts/check.sh`) validates this JSON. When `GITHUB_TOKEN` or `GH_TOKEN` is set it also reads the live ruleset through the API and fails if it is missing, not `active`, or weaker than the checked-in policy; without a token it prints that the live check was skipped. CI does not pass a token to that step, so run `GH_TOKEN=$(gh auth token) python3 .github/scripts/validate_ruleset.py` locally to check the live state.
 
 Editing the checked-in JSON does not change the live repository. A repository administrator must apply the ruleset through the GitHub UI or an authorized administration client. Apply the `agent-registry` requirement only after the intended identities are configured and the check has produced a successful run.
 

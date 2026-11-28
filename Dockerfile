@@ -5,7 +5,7 @@
 #
 # The server listens on 0.0.0.0:8787 inside the container. Put TLS in front
 # and set AGENTTERM_READ_TOKEN before exposing it beyond localhost.
-FROM golang:1.26-bookworm AS build
+FROM golang:1.27.4-bookworm AS build
 WORKDIR /src
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 COPY go.mod go.sum ./

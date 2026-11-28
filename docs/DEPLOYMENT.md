@@ -1,12 +1,12 @@
 # Current deployment
 
-This is the hosted setup as of 27 November 2026. It is the source of truth
+This is the hosted setup as of 27 November 2026 (updated after the
+audit fixes: Supabase Postgres and the secret vault are live). It is the source of truth
 for where Collaborate runs today. Optional and unused platforms are listed
 at the end so older docs are not mistaken for the live path.
 
-The Fly image, `fly.toml`, `Dockerfile.fly`, and `fly/` helper files land
-through [pull request 103](https://github.com/DeontewattsV1/Collaborate.asciidoc/pull/103).
-This page describes that setup; it does not duplicate those files.
+The Fly image, `fly.toml`, `Dockerfile.fly`, and `fly/` helper files are
+on `main`. This page describes that setup; it does not duplicate those files.
 
 ## Architecture
 
@@ -14,9 +14,12 @@ One Fly.io app, `collaborate-asciidoc`, in `iad`, serves the public product:
 
 - **One machine:** `shared-cpu-1x` with 256 MB RAM. Do not add machines.
 - **One volume:** 1 GB, mounted at `/data`. Agent terminal data (`log.jsonl`,
-  `server.key`) stays there. Guild chat state uses the app's memory/tmp store
-  with the file kept under `/data/guild` so it survives auto-stop.
-- **One image** (`Dockerfile.fly`) runs three processes:
+  `server.key`) and the session-revocation file (`/data/guild/sessions.json`)
+  stay there. Rooms, messages and the secret vault live in an external free
+  **Supabase Postgres** (`GUILD_STORE=postgres`).
+- **One image** (`Dockerfile.fly`) runs three processes, all as the
+  unprivileged `node` user (the entrypoint only chowns `/data` as root, then
+  drops privileges):
   - the Next.js Dev Guild app on `127.0.0.1:3000`
   - `agentterm` on `127.0.0.1:8787`
   - a tiny Go reverse proxy on `0.0.0.0:8080` (Fly's `http_service` port)
@@ -40,16 +43,27 @@ proxy :8080
                             → agentterm (existing clients keep these paths)
 ```
 
+The proxy redirects plain-HTTP requests to https (Fly's `force_https` does
+this at the edge too) and adds HSTS, `X-Content-Type-Options`,
+`X-Frame-Options`, `Referrer-Policy` and `Permissions-Policy` to every
+response. The Next.js app adds its Content-Security-Policy
+(`web/dev-guild/next.config.mjs`).
+
+agentterm reads (`/terminal`, `/api/info`, `/api/state`, `/api/log`,
+`/api/verify`, `/api/stream`) require `AGENTTERM_READ_TOKEN`
+(`?token=` or `Authorization: Bearer`). Open the UI as
+`/terminal/?token=<read token>`. Clock-in and entries still need a GitHub token.
+
 Postgres and ClamAV are not started on this machine. 256 MB is too small
-for them. Uploads stay fail-closed.
+for them; Postgres is the external Supabase project. Uploads stay fail-closed.
 
 ## Public URLs
 
 | URL | What it is |
 |---|---|
 | https://collaborate-asciidoc.fly.dev/ | Dev Guild web app (owner token / invite codes) |
-| https://collaborate-asciidoc.fly.dev/api/health | Liveness (`ok`, store kind, uploads status) |
-| https://collaborate-asciidoc.fly.dev/terminal | Shared agent terminal UI |
+| https://collaborate-asciidoc.fly.dev/api/health | Liveness (`ok`, store kind, db status, uploads status) |
+| https://collaborate-asciidoc.fly.dev/terminal/?token=… | Shared agent terminal UI (read token required) |
 | https://deontewattsv1.github.io/Collaborate.asciidoc/ | Static iPhone-style tour (`site/index.html`) on GitHub Pages |
 
 The earlier Vercel Hobby demo at `dev-guild-demo.vercel.app` is not the
@@ -58,10 +72,14 @@ still running. Do not present it as the live app.
 
 ## Store, storage, AI, and auth
 
-- **Room store:** default is the in-memory + `/tmp` adapter. On Fly the
-  `/tmp` file is kept on `/data/guild`. `GUILD_STORE=postgres` and
-  `DATABASE_URL` are supported in the app (see the durable-rooms work in
-  PR 101) but there is no hosted Postgres yet.
+- **Room store:** `GUILD_STORE=postgres` with `DATABASE_URL` pointing at a
+  free Supabase project (session pooler, port 5432). `/api/health` reports
+  `store: postgres, db: ok`. The in-memory + `/tmp` adapter remains the
+  default for local development and the public demo.
+- **Secret vault:** on. `SECRETS_MASTER_KEY` is a Fly secret (the owner keeps
+  a copy in a password manager; losing it loses every stored secret).
+  Provider verification (`SECRETS_VERIFY`) and sync (`SECRETS_SYNC_APPLY`)
+  stay **off**. See [`SECRETS.md`](SECRETS.md).
 - **Attachments:** a private Cloudflare R2 bucket, `collaborate-staging`,
   over the S3 API. Uploads are disabled (fail closed) until a ClamAV
   scanner host exists. clamd needs about 1–1.5 GB of RAM, which this
@@ -71,7 +89,12 @@ still running. Do not present it as the live app.
   documented in [`.env.example`](../web/dev-guild/.env.example). Bring-your-own-key
   (BYOK) for members is planned, not shipped.
 - **Auth:** a shared owner passphrase (`GUILD_OWNER_TOKEN`) and owner-signed
-  invite codes. Keycloak / OIDC is planned, not running.
+  invite codes. Owner sessions expire after 14 days and invite sessions after
+  30 days on the server; logout revokes the session, `POST /api/logout
+  {"everywhere": true}` revokes all of them, and changing
+  `GUILD_SESSION_EPOCH` revokes all sessions and rotates the invite code.
+  Failed sign-ins are throttled (5 per 15 minutes per client, 50 globally).
+  Keycloak / OIDC is planned, not running.
 
 ## Cost (approximate)
 
@@ -87,8 +110,8 @@ Figures use [Fly's public pricing](https://docs.fly.io/about/pricing) for
 | Shared IPv4 and IPv6 | free |
 | Dedicated IPv4 | $2; **do not create one** |
 
-Do not create machines, volumes, dedicated IPv4 addresses, managed
-Postgres, or Upstash. Stay on `shared-cpu-1x`. Raise this same machine to
+Supabase's free plan costs nothing. Do not create machines, volumes,
+dedicated IPv4 addresses, Fly managed Postgres, or Upstash. Stay on `shared-cpu-1x`. Raise this same machine to
 512 MB only if it OOMs; do not add a second machine.
 
 ## Deploy and rollback
@@ -97,11 +120,22 @@ Never omit `--ha=false --update-only`. `fly deploy` otherwise tries to
 create a spare machine (and a second volume).
 
 ```sh
-# From a checkout that contains fly.toml and Dockerfile.fly (PR 103):
+# From a checkout of main:
 flyctl deploy --ha=false --update-only --yes -a collaborate-asciidoc
 ```
 
-Rollback to the previous agentterm-only image and port 8787 (keep a copy
+Roll back to an earlier combined image (list them with
+`flyctl releases --image -a collaborate-asciidoc`):
+
+```sh
+flyctl deploy --ha=false --update-only --yes -a collaborate-asciidoc \
+  --image registry.fly.io/collaborate-asciidoc:deployment-<id>
+```
+
+Images built before the non-root change run as root and do not need the
+`/data` chown; rolling back to them is safe.
+
+Last resort, the original agentterm-only image and port 8787 (keep a copy
 of that older `fly.toml`):
 
 ```sh
@@ -110,8 +144,6 @@ flyctl deploy --ha=false --update-only --yes -a collaborate-asciidoc \
   --config path/to/agentterm-only-fly.toml
 ```
 
-A current combined-image release was
-`registry.fly.io/collaborate-asciidoc:deployment-01M8FP5V657824FQCWJXBHS9WM`.
 
 ## Secrets (names only)
 
@@ -120,11 +152,14 @@ Set on the Fly app; never commit values. The browser never receives them.
 | Name | Purpose |
 |---|---|
 | `GUILD_OWNER_TOKEN` | Owner passphrase and invite signing |
+| `GUILD_SESSION_EPOCH` | Optional; change it to revoke every session and rotate the invite code (default `1`) |
+| `AGENTTERM_READ_TOKEN` | Required to read the agent terminal (`/terminal`, `/api/state`, …) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Free Gemini key (also accepted as `GEMINI_API_KEY` on the host) |
 | `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Private R2 bucket (`collaborate-staging`) |
-| `DATABASE_URL` | Only if `GUILD_STORE=postgres`; **not set** today |
+| `GUILD_STORE`, `DATABASE_URL` | `postgres` + the Supabase session-pooler connection string; **set** |
+| `NODE_EXTRA_CA_CERTS` | Extra CA bundle path for the Postgres TLS connection; **set** |
 | `CLAMD_HOST` / `CLAMSCAN_PATH` | Scanner; **not set** today, so uploads stay disabled |
-| `SECRETS_MASTER_KEY` | Secret vault master key; **not set** today, so the vault is off (chat redaction still runs). See [`SECRETS.md`](SECRETS.md) |
+| `SECRETS_MASTER_KEY` | Secret vault master key; **set**, so the vault is on. Verify and sync stay off. See [`SECRETS.md`](SECRETS.md) |
 
 Full variable names for local development are in
 [`web/dev-guild/.env.example`](../web/dev-guild/.env.example).
@@ -145,7 +180,7 @@ These are optional, legacy, or planned. They are not how the live app runs.
 | ClamAV / clamd | Required for uploads; not hosted yet |
 | Uptime Kuma | Not in use |
 | Native iOS app | Reference source only, not compiled. Scope is the Liquid Glass-style chat UI in `native/ios`. The free mobile path is the PWA (Add to Home Screen) |
-| Hosted Postgres | Supported in code; no database is provisioned |
+| Hosted Postgres | **In use:** free Supabase project (not Fly managed Postgres) |
 
 GitHub Codespaces (with a $0 spending limit) remains a valid optional
 sandbox for iPhone or SSH work. See [`IPHONE-SANDBOX.md`](IPHONE-SANDBOX.md).

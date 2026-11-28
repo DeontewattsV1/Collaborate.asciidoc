@@ -13,11 +13,12 @@ class GovernancePolicyTest(unittest.TestCase):
         cls.policy = json.loads(POLICY.read_text(encoding='utf-8'))
         cls.rules = {rule['type']: rule for rule in cls.policy['rules']}
 
-    def test_active_default_branch_without_bypass(self):
+    def test_active_default_branch_admin_pr_bypass_only(self):
         self.assertEqual(self.policy['enforcement'], 'active')
         self.assertEqual(self.policy['target'], 'branch')
         self.assertIn('~DEFAULT_BRANCH', self.policy['conditions']['ref_name']['include'])
-        self.assertEqual(self.policy['bypass_actors'], [])
+        self.assertEqual(self.policy['bypass_actors'],
+                         [{'actor_id': 5, 'actor_type': 'RepositoryRole', 'bypass_mode': 'pull_request'}])
 
     def test_independent_review_required(self):
         p = self.rules['pull_request']['parameters']

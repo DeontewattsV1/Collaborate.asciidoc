@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { assertCanUpload, recordAttachment } from "../../../../../lib/rooms/authz.js";
 import { apiError, bearer, roomDb } from "../../../../../lib/rooms/http.js";
 import { scanOrReject, scannerFromEnv } from "../../../../../lib/rooms/scanner.js";
+import { BodyTooLargeError, parseCappedForm } from "../../../../../lib/rooms/body.js";
 import { MAX_FILE_BYTES, sha256Hex, storageFromEnv } from "../../../../../lib/rooms/storage.js";
 
 export const runtime = "nodejs";
@@ -25,9 +26,14 @@ export async function POST(request, { params }) {
     const storage = await storageFromEnv();
     if (!storage) return NextResponse.json({ error: "uploads disabled: private storage not configured" }, { status: 503 });
 
-    const declared = Number(request.headers.get("content-length") || 0);
-    if (declared > MAX_FILE_BYTES + 64 * 1024) return NextResponse.json({ error: "file too large" }, { status: 413 });
-    const form = await request.formData().catch(() => null);
+    // Stream the body with a hard cap (chunked uploads have no Content-Length).
+    let form = null;
+    try {
+      form = await parseCappedForm(request, MAX_FILE_BYTES + 64 * 1024);
+    } catch (err) {
+      if (err instanceof BodyTooLargeError) return NextResponse.json({ error: "file too large" }, { status: 413 });
+      form = null;
+    }
     const file = form && form.get("file");
     if (!file || typeof file.arrayBuffer !== "function") return NextResponse.json({ error: "missing file" }, { status: 400 });
     const name = String(file.name || "upload").trim();

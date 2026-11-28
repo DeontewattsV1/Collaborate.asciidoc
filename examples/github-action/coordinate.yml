@@ -1,8 +1,8 @@
 # Example: copy to .github/workflows/collaborate-check.yml in your repository.
 #
-# NOT PUBLISHED YET: replace FULL_COMMIT_SHA with a reviewed full commit SHA of
-# DeontewattsV1/Collaborate.asciidoc (and the comment with its tag once a
-# release exists). Pin by full SHA, never by a moving branch.
+# Pinned to the published v1.0.0 release by its full commit SHA. When you
+# upgrade, replace both the SHA and the tag comment with a reviewed release.
+# Pin by full SHA, never by a moving tag or branch.
 #
 # pull_request_target runs with your repository's token, which is why this
 # workflow never checks out the pull request: the action reads PR metadata
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: DeontewattsV1/Collaborate.asciidoc@FULL_COMMIT_SHA # vX.Y.Z (not published yet)
+      - uses: DeontewattsV1/Collaborate.asciidoc@0348acdda4c98d3892dd6b79467a240c4daeb0cd # v1.0.0
         with:
           comment: "true"
           reconcile: "true"

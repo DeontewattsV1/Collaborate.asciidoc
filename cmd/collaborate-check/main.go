@@ -8,6 +8,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"collaborate/internal/ghcoord"
@@ -17,9 +18,13 @@ import (
 var version = "dev"
 
 func main() {
-	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "version") {
-		fmt.Printf("collaborate-check %s (report schema %s)\n", version, ghcoord.SchemaVersion)
-		return
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, os.Getenv))
+}
+
+func run(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
+		fmt.Fprintf(stdout, "collaborate-check %s (report schema %s)\n", version, ghcoord.SchemaVersion)
+		return 0
 	}
-	os.Exit(ghcoord.RunCLI("collaborate-check", os.Args[1:], os.Stdout, os.Stderr, os.Getenv))
+	return ghcoord.RunCLI("collaborate-check", args, stdout, stderr, getenv)
 }

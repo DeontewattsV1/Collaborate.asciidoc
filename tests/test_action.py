@@ -72,12 +72,14 @@ class ActionSafetyTest(unittest.TestCase):
         self.assertRegex(INTEGRATION, r'(?m)^permissions:\n  contents: read\n  pull-requests: read$')
         self.assertIn('uses: ./', INTEGRATION)
 
-    def test_example_and_docs_pin_full_sha_placeholder_and_say_unpublished(self):
-        self.assertIn('DeontewattsV1/Collaborate.asciidoc@FULL_COMMIT_SHA', EXAMPLE)
+    def test_example_and_docs_pin_the_published_release_by_full_sha(self):
+        pin = re.compile(r'DeontewattsV1/Collaborate\.asciidoc@[0-9a-f]{40} # v\d+\.\d+\.\d+')
+        self.assertRegex(EXAMPLE, pin)
         self.assertNotIn('Collaborate.asciidoc@v1', EXAMPLE)
+        self.assertNotIn('FULL_COMMIT_SHA', EXAMPLE)
         self.assertNotIn('actions/checkout', EXAMPLE)
-        self.assertIn('FULL_COMMIT_SHA', DOC)
-        self.assertRegex(DOC, r'(?i)not (yet )?published')
+        self.assertRegex(DOC, pin)
+        self.assertRegex(DOC, r'(?i)status: published')
 
 
 if __name__ == '__main__':
